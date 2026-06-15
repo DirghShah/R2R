@@ -1,0 +1,66 @@
+# XcodeGen spec — run `xcodegen generate` (brew install xcodegen) to produce
+# ReelMap.xcodeproj. Three targets share SharedKit; the Share Extension and the
+# app share a session via an App Group + Keychain.
+name: ReelMap
+options:
+  bundleIdPrefix: com.yourco.reelmap
+  deploymentTarget:
+    iOS: "17.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: "" # set your team id
+    API_BASE_URL: "http://localhost:8000"
+
+targets:
+  ReelMap:
+    type: application
+    platform: iOS
+    sources: [ReelMap]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+    entitlements:
+      path: ReelMap/ReelMap.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.yourco.reelmap]
+        com.apple.developer.applesignin: [Default]
+        aps-environment: development
+    dependencies:
+      - target: SharedKit
+      - target: ShareExtension
+        embed: true
+
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources: [ShareExtension]
+    dependencies:
+      - target: SharedKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.share
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.yourco.reelmap]
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+
+  SharedKit:
+    type: framework
+    platform: iOS
+    sources: [SharedKit]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.SharedKit

@@ -1,0 +1,31 @@
+# --- Web API ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
+python-multipart>=0.0.9
+
+# --- Database ---
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+alembic>=1.13
+
+# --- Job queue ---
+redis>=5.0
+rq>=1.16
+
+# --- Auth ---
+python-jose[cryptography]>=3.3
+httpx>=0.27
+
+# --- AI / pipeline ---
+anthropic>=0.40
+
+# --- Push notifications ---
+aioapns>=3.1
+
+# --- Transcription (heavy; optional for caption-only dev) ---
+# faster-whisper>=1.0
+
+# --- Dev / test ---
+pytest>=8.0

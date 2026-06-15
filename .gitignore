@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+*.p8
+
+# Data
+*.sqlite3
+pgdata/
+
+# iOS / Xcode
+ios/**/build/
+ios/**/DerivedData/
+*.xcuserstate
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
