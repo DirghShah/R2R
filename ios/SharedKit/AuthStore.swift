@@ -8,18 +8,27 @@ public enum AuthStore {
     private static let service = "com.yourco.reelmap.auth"
     private static let account = "jwt"
 
+    /// App Groups require the paid Apple Developer Program. Leave this `false` for
+    /// the free-account build (the app keeps its token in its own Keychain). Flip
+    /// to `true` only when you enable the Share Extension + App Group, so the
+    /// extension and app share one session.
+    public static let useSharedAccessGroup = false
+
     public static var token: String? {
         get { read() }
         set { newValue.map(save) ?? delete() }
     }
 
     private static func baseQuery() -> [String: Any] {
-        [
+        var q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: appGroup,
         ]
+        if useSharedAccessGroup {
+            q[kSecAttrAccessGroup as String] = appGroup
+        }
+        return q
     }
 
     private static func save(_ value: String) {

@@ -1,6 +1,13 @@
-# XcodeGen spec — run `xcodegen generate` (brew install xcodegen) to produce
-# ReelMap.xcodeproj. Three targets share SharedKit; the Share Extension and the
-# app share a session via an App Group + Keychain.
+# XcodeGen spec — run `xcodegen generate` to produce ReelMap.xcodeproj.
+#
+# DEFAULT = free-account build: runs in the Simulator and on your own iPhone with
+# a free Apple ID. No App Group / Sign in with Apple / Push (those need the paid
+# $99/yr Developer Program). You log in with the DEBUG dev button and add reels by
+# pasting the link.
+#
+# TO ENABLE THE NATIVE INSTAGRAM SHARE (paid account): see ios/README.md →
+# "Enabling the Share Extension" — uncomment the ShareExtension target + the app's
+# entitlements/embed below.
 name: ReelMap
 options:
   bundleIdPrefix: com.yourco.reelmap
@@ -10,7 +17,9 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: "" # set your team id
+    DEVELOPMENT_TEAM: "" # set your Team (free personal team is fine)
+    # For the Simulator use localhost. For a physical iPhone, set this to your
+    # Mac's LAN IP, e.g. http://192.168.1.20:8000  (find it: ipconfig getifaddr en0)
     API_BASE_URL: "http://localhost:8000"
 
 targets:
@@ -18,44 +27,20 @@ targets:
     type: application
     platform: iOS
     sources: [ReelMap]
+    dependencies:
+      - target: SharedKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap
-        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
-    entitlements:
-      path: ReelMap/ReelMap.entitlements
-      properties:
-        com.apple.security.application-groups: [group.com.yourco.reelmap]
-        com.apple.developer.applesignin: [Default]
-        aps-environment: development
-    dependencies:
-      - target: SharedKit
-      - target: ShareExtension
-        embed: true
-
-  ShareExtension:
-    type: app-extension
-    platform: iOS
-    sources: [ShareExtension]
-    dependencies:
-      - target: SharedKit
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.share
-    entitlements:
-      path: ShareExtension/ShareExtension.entitlements
-      properties:
-        com.apple.security.application-groups: [group.com.yourco.reelmap]
     info:
-      path: ShareExtension/Info.plist
+      path: ReelMap/Info.plist
       properties:
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.share-services
-          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
-          NSExtensionAttributes:
-            NSExtensionActivationRule:
-              NSExtensionActivationSupportsWebURLWithMaxCount: 1
-              NSExtensionActivationSupportsText: true
+        API_BASE_URL: $(API_BASE_URL)
+        UILaunchScreen: {}
+        # DEV ONLY: lets the device talk to your Mac's backend over plain HTTP.
+        # Remove before shipping (production uses HTTPS).
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
 
   SharedKit:
     type: framework
@@ -64,3 +49,31 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.SharedKit
+
+  # ---- Paid-account only: native Instagram share sheet ----
+  # Uncomment this target AND the app's `entitlements` + `embed` dependency
+  # (see ios/README.md) once you have the Apple Developer Program + an App Group.
+  #
+  # ShareExtension:
+  #   type: app-extension
+  #   platform: iOS
+  #   sources: [ShareExtension]
+  #   dependencies:
+  #     - target: SharedKit
+  #   settings:
+  #     base:
+  #       PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.share
+  #   entitlements:
+  #     path: ShareExtension/ShareExtension.entitlements
+  #     properties:
+  #       com.apple.security.application-groups: [group.com.yourco.reelmap]
+  #   info:
+  #     path: ShareExtension/Info.plist
+  #     properties:
+  #       NSExtension:
+  #         NSExtensionPointIdentifier: com.apple.share-services
+  #         NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+  #         NSExtensionAttributes:
+  #           NSExtensionActivationRule:
+  #             NSExtensionActivationSupportsWebURLWithMaxCount: 1
+  #             NSExtensionActivationSupportsText: true

@@ -15,6 +15,19 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Spacer()
+            #if DEBUG
+            // Free-account dev login — backend accepts `dev:` tokens when
+            // ENVIRONMENT=dev. Lets you test the whole app without the paid
+            // Sign in with Apple capability.
+            Button {
+                Task { await devSignIn() }
+            } label: {
+                Label("Dev sign in", systemImage: "hammer.fill")
+                    .frame(maxWidth: .infinity).frame(height: 50)
+            }
+            .buttonStyle(.borderedProminent)
+            #endif
+
             SignInWithAppleButton(.signIn) { request in
                 request.requestedScopes = [.fullName, .email]
             } onCompletion: { result in
@@ -26,6 +39,17 @@ struct OnboardingView: View {
         }
         .padding(32)
     }
+
+    #if DEBUG
+    private func devSignIn() async {
+        do {
+            _ = try await APIClient.shared.signInWithApple(identityToken: "dev:me")
+            session.signInCompleted()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+    #endif
 
     private func handle(_ result: Result<ASAuthorization, Error>) async {
         switch result {

@@ -8,6 +8,8 @@ struct RootView: View {
                 .tabItem { Label("Map", systemImage: "map.fill") }
             CityListsScreen()
                 .tabItem { Label("Lists", systemImage: "list.bullet") }
+            AddReelScreen()
+                .tabItem { Label("Add", systemImage: "plus.circle.fill") }
         }
     }
 }

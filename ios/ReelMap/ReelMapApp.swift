@@ -24,10 +24,8 @@ final class SessionViewModel: ObservableObject {
     @Published var isAuthenticated = AuthStore.token != nil
 
     func bootstrap() async {
-        // Submit any reels the Share Extension queued while offline.
-        for url in PendingQueue.drain() {
-            try? await APIClient.shared.submitReel(url: url)
-        }
+        // (Paid build) the Share Extension drains its offline queue here. The
+        // free build adds reels via the Add tab, so nothing to do on launch.
     }
 
     func signInCompleted() { isAuthenticated = AuthStore.token != nil }
