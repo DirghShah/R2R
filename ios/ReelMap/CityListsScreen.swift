@@ -1,4 +1,5 @@
 import SwiftData
+import SharedKit
 import SwiftUI
 
 struct CityListsScreen: View {
@@ -79,7 +80,7 @@ struct ListDetailScreen: View {
         let category = list.category
         let city = list.city
         _places = Query(filter: #Predicate<CachedPlace> { p in
-            p.category == category && p.city == city
+            p.category == category ?? "" && p.city == city
         }, sort: \CachedPlace.name)
     }
 

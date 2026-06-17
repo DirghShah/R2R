@@ -1,4 +1,5 @@
 import MapKit
+import SharedKit
 import SwiftUI
 
 struct PlaceDetailScreen: View {
