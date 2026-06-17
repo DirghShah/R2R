@@ -1,24 +1,26 @@
 import MapKit
-import SharedKit
+import SwiftData
 import SwiftUI
 
 struct MapScreen: View {
-    @StateObject private var store = PlacesStore()
-    @State private var selected: SavedPlace?
-    @State private var filter: MapFilter = .all
-    @State private var detail: SavedPlace?
+    @Environment(\.modelContext) private var context
+    @Query(sort: \CachedPlace.savedAt, order: .reverse) private var allPlaces: [CachedPlace]
 
-    private var pins: [SavedPlace] {
-        store.places.filter { $0.coordinate != nil && filter.matches($0.categoryEnum) }
+    @State private var selected: CachedPlace?
+    @State private var filter: MapFilter = .all
+    @State private var detail: CachedPlace?
+
+    private var pins: [CachedPlace] {
+        allPlaces.filter { $0.coordinate != nil && filter.matches($0.categoryEnum) }
     }
 
     var body: some View {
         Map {
-            ForEach(pins) { saved in
-                if let coord = saved.coordinate {
-                    Annotation(saved.place.name, coordinate: coord) {
-                        PinView(saved: saved, selected: selected?.id == saved.id) {
-                            withAnimation(.spring(duration: 0.35)) { selected = saved }
+            ForEach(pins) { place in
+                if let coord = place.coordinate {
+                    Annotation(place.name, coordinate: coord) {
+                        PinView(place: place, selected: selected?.id == place.id) {
+                            withAnimation(.spring(duration: 0.3)) { selected = place }
                         }
                     }
                 }
@@ -28,65 +30,65 @@ struct MapScreen: View {
         .ignoresSafeArea(edges: .top)
         .safeAreaInset(edge: .top) { filterBar }
         .overlay(alignment: .bottom) { bottomLayer }
-        .task { await store.refresh() }
-        .refreshable { await store.refresh() }
-        .sheet(item: $detail) { PlaceDetailScreen(saved: $0) }
+        .task { await Syncer.refresh(context) }
+        .refreshable { await Syncer.refresh(context) }
+        .sheet(item: $detail) { PlaceDetailScreen(place: $0) }
     }
 
     private var filterBar: some View {
-        GlassEffectContainer(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(MapFilter.allCases) { f in
-                        let on = filter == f
-                        Button {
-                            withAnimation(.snappy) { filter = f; selected = nil }
-                        } label: {
-                            Label(f.label, systemImage: f.icon)
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14).padding(.vertical, 9)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(on ? .white : .primary)
-                        .glassEffect(
-                            on ? .regular.tint(.accentColor).interactive() : .regular.interactive(),
-                            in: .capsule)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(MapFilter.allCases) { f in
+                    let on = filter == f
+                    Button {
+                        withAnimation(.snappy) { filter = f; selected = nil }
+                    } label: {
+                        Label(f.label, systemImage: f.icon)
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .foregroundStyle(on ? Color.white : .primary)
+                            .background {
+                                if on { Capsule().fill(Color.appAccent) }
+                                else { Capsule().fill(.regularMaterial) }
+                            }
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(on ? 0 : 0.06)))
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 16)
             }
+            .padding(.horizontal, 16).padding(.vertical, 4)
         }
-        .padding(.top, 4)
     }
 
     @ViewBuilder private var bottomLayer: some View {
         if let selected {
-            PreviewCard(saved: selected) { detail = selected }
+            PreviewCard(place: selected) { detail = selected }
                 .padding(.horizontal, 16).padding(.bottom, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if store.places.isEmpty && !store.isLoading {
-            EmptyHint()
-                .padding(.horizontal, 24).padding(.bottom, 16)
+        } else if allPlaces.isEmpty {
+            EmptyHint().padding(.horizontal, 24).padding(.bottom, 16)
         }
     }
 }
 
 private struct PinView: View {
-    let saved: SavedPlace
+    let place: CachedPlace
     let selected: Bool
     let tap: () -> Void
 
     var body: some View {
         Button(action: tap) {
             VStack(spacing: 0) {
-                Image(systemName: saved.categoryEnum.symbol)
+                Image(systemName: place.categoryEnum.symbol)
                     .font(.system(size: selected ? 18 : 14, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: selected ? 46 : 38, height: selected ? 46 : 38)
-                    .glassEffect(.regular.tint(saved.categoryEnum.tint).interactive(), in: .circle)
+                    .frame(width: selected ? 44 : 36, height: selected ? 44 : 36)
+                    .background(place.categoryEnum.tint, in: .circle)
+                    .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                 Image(systemName: "arrowtriangle.down.fill")
                     .font(.system(size: 9))
-                    .foregroundStyle(saved.categoryEnum.tint)
+                    .foregroundStyle(place.categoryEnum.tint)
                     .offset(y: -2)
             }
         }
@@ -95,29 +97,28 @@ private struct PinView: View {
 }
 
 private struct PreviewCard: View {
-    let saved: SavedPlace
+    let place: CachedPlace
     let open: () -> Void
 
     var body: some View {
         Button(action: open) {
             HStack(spacing: 14) {
-                Image(systemName: saved.categoryEnum.symbol)
+                Image(systemName: place.categoryEnum.symbol)
                     .font(.title3.weight(.semibold)).foregroundStyle(.white)
                     .frame(width: 46, height: 46)
-                    .background(saved.categoryEnum.tint, in: .circle)
+                    .background(place.categoryEnum.tint, in: .circle)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(saved.place.name).font(.headline).lineLimit(1)
-                    Text(saved.categoryEnum.displayName
-                         + (saved.place.address.map { " · \($0)" } ?? ""))
+                    Text(place.name).font(.headline).lineLimit(1)
+                    Text(place.categoryEnum.displayName + (place.address.map { " · \($0)" } ?? ""))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(.secondary)
             }
             .padding(14)
+            .card(22)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
     }
 }
 
@@ -127,10 +128,9 @@ private struct EmptyHint: View {
             Image(systemName: "sparkles").font(.title2)
             Text("Your map is empty").font(.headline)
             Text("Open the Add tab and paste an Instagram reel to drop your first pins.")
-                .font(.callout).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .padding(20)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .card(24)
     }
 }

@@ -36,6 +36,7 @@ class UserPlaceOut(BaseModel):
 
     id: str
     place: PlaceOut
+    city: str | None = None
     reel_url: str | None = None
     description: str | None = None
     tips: list | None = None

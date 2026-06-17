@@ -12,7 +12,7 @@ name: ReelMap
 options:
   bundleIdPrefix: com.yourco.reelmap
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "17.0"
 
 settings:
   base:

@@ -1,4 +1,5 @@
 import SharedKit
+import SwiftData
 import SwiftUI
 
 @main
@@ -14,19 +15,16 @@ struct ReelMapApp: App {
                     OnboardingView(session: session)
                 }
             }
-            .task { await session.bootstrap() }
+            .tint(.appAccent)
+            .environmentObject(session)
         }
+        .modelContainer(for: [CachedPlace.self, CachedList.self])
     }
 }
 
 @MainActor
 final class SessionViewModel: ObservableObject {
     @Published var isAuthenticated = AuthStore.token != nil
-
-    func bootstrap() async {
-        // (Paid build) the Share Extension drains its offline queue here. The
-        // free build adds reels via the Add tab, so nothing to do on launch.
-    }
 
     func signInCompleted() { isAuthenticated = AuthStore.token != nil }
     func signOut() { AuthStore.token = nil; isAuthenticated = false }

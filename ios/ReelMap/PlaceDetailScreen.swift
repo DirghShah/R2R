@@ -1,23 +1,22 @@
 import MapKit
-import SharedKit
 import SwiftUI
 
 struct PlaceDetailScreen: View {
-    let saved: SavedPlace
+    let place: CachedPlace
     @Environment(\.dismiss) private var dismiss
 
-    private var category: PlaceCategory { saved.categoryEnum }
+    private var category: PlaceCategory { place.categoryEnum }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
-                    if let desc = saved.description, !desc.isEmpty {
+                    if let desc = place.summary, !desc.isEmpty {
                         Text(desc).font(.body)
                     }
-                    card("What to order", "fork.knife", saved.whatToOrder)
-                    card("Tips", "lightbulb.fill", saved.tips)
+                    card("What to order", "fork.knife", place.whatToOrder)
+                    card("Tips", "lightbulb.fill", place.tips)
                     actions
                 }
                 .padding(20)
@@ -26,74 +25,54 @@ struct PlaceDetailScreen: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.glass)
+                    Button("Done") { dismiss() }
                 }
             }
         }
     }
 
-    // MARK: Pieces
-
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
-            photos
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Label(category.displayName, systemImage: category.symbol)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .foregroundStyle(.white)
-                    .glassEffect(.regular.tint(category.tint), in: .capsule)
-                if let r = saved.place.rating {
+                    .background(category.tint, in: .capsule)
+                if let r = place.rating {
                     Label(String(format: "%.1f", r), systemImage: "star.fill")
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 12).padding(.vertical, 7)
-                        .glassEffect(.regular, in: .capsule)
+                        .background(.regularMaterial, in: .capsule)
                 }
             }
-            Text(saved.place.name).font(.largeTitle.bold())
-            if let a = saved.place.address {
+            Text(place.name).font(.largeTitle.bold())
+            if let a = place.address {
                 Text(a).font(.subheadline).foregroundStyle(.secondary)
             }
         }
     }
 
-    @ViewBuilder private var photos: some View {
-        if let urls = saved.place.photos, !urls.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(urls, id: \.self) { u in
-                        AsyncImage(url: URL(string: u)) { $0.resizable().scaledToFill() }
-                            placeholder: { category.tint.opacity(0.15) }
-                            .frame(width: 240, height: 160)
-                            .clipShape(.rect(cornerRadius: 18))
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder private func card(_ title: String, _ icon: String, _ items: [String]?) -> some View {
-        if let items, !items.isEmpty {
+    @ViewBuilder private func card(_ title: String, _ icon: String, _ items: [String]) -> some View {
+        if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Label(title, systemImage: icon).font(.headline)
                 ForEach(items, id: \.self) { item in
                     HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(category.tint)
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(category.tint)
                         Text(item)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .glassEffect(.regular, in: .rect(cornerRadius: 20))
+            .card(20)
         }
     }
 
     private var actions: some View {
         VStack(spacing: 10) {
-            if let reel = saved.reelURL, let url = URL(string: reel) {
+            if let reel = place.reelURL, let url = URL(string: reel) {
                 action("Open in Instagram", "play.rectangle.fill") { openInstagram(url) }
             }
             action("Google Maps", "map.fill") { openGoogleMaps() }
@@ -107,14 +86,13 @@ struct PlaceDetailScreen: View {
             Label(title, systemImage: icon)
                 .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
         }
-        .buttonStyle(.glassProminent)
+        .buttonStyle(.borderedProminent)
         .tint(category.tint)
     }
 
     private var backdrop: some View {
         LinearGradient(colors: [category.tint.opacity(0.12), .clear],
-                       startPoint: .top, endPoint: .center)
-            .ignoresSafeArea()
+                       startPoint: .top, endPoint: .center).ignoresSafeArea()
     }
 
     // MARK: Deep links
@@ -130,18 +108,18 @@ struct PlaceDetailScreen: View {
     }
 
     private func openGoogleMaps() {
-        guard let lat = saved.place.lat, let lng = saved.place.lng else { return }
-        let q = saved.place.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        guard let lat = place.lat, let lng = place.lng else { return }
+        let q = place.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let appURL = URL(string: "comgooglemaps://?q=\(q)&center=\(lat),\(lng)")!
         let webURL = URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")!
         UIApplication.shared.open(UIApplication.shared.canOpenURL(appURL) ? appURL : webURL)
     }
 
     private func openAppleMaps() {
-        guard let lat = saved.place.lat, let lng = saved.place.lng else { return }
+        guard let lat = place.lat, let lng = place.lng else { return }
         let item = MKMapItem(placemark: MKPlacemark(
             coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)))
-        item.name = saved.place.name
+        item.name = place.name
         item.openInMaps()
     }
 }

@@ -1,9 +1,11 @@
 import SharedKit
+import SwiftData
 import SwiftUI
 
 /// Paste an Instagram reel link (Instagram → Share → Copy link) and analyze it.
 /// Same backend pipeline as the native share sheet — works on a free account.
 struct AddReelScreen: View {
+    @Environment(\.modelContext) private var context
     @State private var url = ""
     @State private var phase: Phase = .idle
 
@@ -23,9 +25,6 @@ struct AddReelScreen: View {
                 .padding(20)
             }
             .navigationTitle("Add a place")
-            .background(
-                LinearGradient(colors: [.accentColor.opacity(0.10), .clear],
-                               startPoint: .top, endPoint: .center).ignoresSafeArea())
         }
     }
 
@@ -33,11 +32,9 @@ struct AddReelScreen: View {
         VStack(spacing: 8) {
             Image(systemName: "sparkles.rectangle.stack.fill")
                 .font(.system(size: 40)).foregroundStyle(.tint)
-            Text("Paste a reel, get a pin")
-                .font(.title2.bold())
+            Text("Paste a reel, get a pin").font(.title2.bold())
             Text("In Instagram tap Share → Copy link, then paste it here. We pull out every place and drop it on your map.")
-                .font(.callout).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .padding(.top, 8)
     }
@@ -60,18 +57,18 @@ struct AddReelScreen: View {
             .buttonStyle(.plain)
         }
         .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .card(20)
     }
 
     private var analyzeButton: some View {
         Button { Task { await submit() } } label: {
             HStack {
-                if case .working = phase { ProgressView().tint(.white); Spacer().frame(width: 8) }
+                if isWorking { ProgressView().tint(.white); Spacer().frame(width: 8) }
                 Text("Analyze reel").font(.headline)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 6)
         }
-        .buttonStyle(.glassProminent)
+        .buttonStyle(.borderedProminent)
         .disabled(url.isEmpty || isWorking)
     }
 
@@ -94,7 +91,7 @@ struct AddReelScreen: View {
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .card(16)
     }
 
     private var isWorking: Bool { if case .working = phase { return true } else { return false } }
@@ -117,9 +114,14 @@ struct AddReelScreen: View {
             try await Task.sleep(for: .seconds(2))
             let s = try await APIClient.shared.reelStatus(reelID)
             switch s.status {
-            case "done": phase = .done(s.placeCount); url = ""; return
-            case "failed": phase = .failed("Couldn't analyze that reel. Try another."); return
-            default: phase = .working("Analyzing… (\(s.status))")
+            case "done":
+                phase = .done(s.placeCount); url = ""
+                await Syncer.refresh(context)   // pull the new pins into the cache
+                return
+            case "failed":
+                phase = .failed("Couldn't analyze that reel. Try another."); return
+            default:
+                phase = .working("Analyzing… (\(s.status))")
             }
         }
         phase = .working("Still working — check the Map shortly.")

@@ -17,6 +17,9 @@ Full design lives in `README.md`, `backend/README.md`, `ios/README.md`.
   - `worker/fetchers/` — swappable reel fetchers (`stub`, `apify`; yt-dlp later).
   - `app/` — HTTP API (auth, reels, places/lists), SQLAlchemy models, config.
 - `ios/` — SwiftUI app + Share Extension, declared via `project.yml` (XcodeGen).
+  - iOS 17+, material UI (not Liquid Glass). SwiftData offline cache
+    (`Persistence.swift`: `CachedPlace`/`CachedList` + `Syncer`); views read via
+    `@Query`, network refresh replaces the cache.
 
 ## Current status (verified)
 - Backend: 7 unit tests + full API smoke flow pass. All modules import; tables build.
@@ -33,7 +36,7 @@ Full design lives in `README.md`, `backend/README.md`, `ios/README.md`.
    ANTHROPIC_API_KEY=sk-ant-...
    ANTHROPIC_MODEL=claude-haiku-4-5   # cheap model for now
    REEL_FETCHER=stub                  # sample reel; switch to apify for real reels
-   GEOCODER=nominatim                 # free; switch to google for photos/ratings
+   GEOCODER=nominatim                 # free default; switch to google for photos/ratings
    ```
 2. Validate the engine with no infra:
    ```

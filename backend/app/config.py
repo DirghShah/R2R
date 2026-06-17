@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # --- Geocoding ---
     google_places_api_key: str | None = None
-    geocoder: str = "google"  # google | nominatim
+    geocoder: str = "nominatim"  # nominatim (free, default) | google (photos/ratings)
 
     # --- Transcription ---
     enable_transcription: bool = True

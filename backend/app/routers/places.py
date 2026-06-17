@@ -34,6 +34,7 @@ def list_places(
             UserPlaceOut(
                 id=up.id,
                 place=up.place,
+                city=up.place.city.name if up.place and up.place.city else None,
                 reel_url=up.reel_source.url if up.reel_source else None,
                 description=up.description,
                 tips=up.tips,

@@ -1,9 +1,8 @@
-import CoreLocation
 import SharedKit
 import SwiftUI
 
-/// Small design system: category colors, display names, and convenience accessors
-/// used across the Liquid Glass UI.
+/// Small design system: category colors, names, map filters, and a subtle
+/// material card style (clean and modern, a touch of depth — not flashy).
 
 extension PlaceCategory {
     var tint: Color {
@@ -33,16 +32,6 @@ extension PlaceCategory {
     }
 }
 
-extension SavedPlace {
-    var categoryEnum: PlaceCategory { PlaceCategory(rawValue: place.category) ?? .other }
-
-    var coordinate: CLLocationCoordinate2D? {
-        guard let lat = place.lat, let lng = place.lng else { return nil }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lng)
-    }
-}
-
-/// Map filter chips grouped into the user's mental model (food / stays / etc.).
 enum MapFilter: String, CaseIterable, Identifiable {
     case all, cafes, food, stays, nightlife, sights
     var id: String { rawValue }
@@ -79,4 +68,27 @@ enum MapFilter: String, CaseIterable, Identifiable {
         case .sights: return category == .sight || category == .event
         }
     }
+}
+
+/// The app accent — a warm, modern terracotta.
+extension Color {
+    static let appAccent = Color(red: 0.92, green: 0.45, blue: 0.20)
+}
+
+/// Subtle material card: thin material, hairline border, soft shadow.
+struct CardBackground: ViewModifier {
+    var radius: CGFloat = 16
+    func body(content: Content) -> some View {
+        content
+            .background(.regularMaterial,
+                        in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06)))
+            .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
+    }
+}
+
+extension View {
+    func card(_ radius: CGFloat = 16) -> some View { modifier(CardBackground(radius: radius)) }
 }

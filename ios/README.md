@@ -5,8 +5,9 @@ SwiftUI app declared via `project.yml` (XcodeGen) — no hand-edited `pbxproj`.
 The project is set up to **build and run on a free Apple ID** (Simulator or your
 own iPhone). The paid-only native Instagram share is opt-in (see bottom).
 
-> **Requires Xcode 26 / iOS 26.** The UI uses Liquid Glass (`.glassEffect`, glass
-> button styles, glass tab bar), so your iPhone/Simulator must run iOS 26+.
+> **Requires iOS 17+** (SwiftData + the SwiftUI `Map` API). Clean, modern material
+> UI — no iOS-26-only features. Places/lists are cached locally via SwiftData, so
+> the map loads instantly and works offline; a background sync refreshes it.
 
 ## Generate & open
 

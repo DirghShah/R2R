@@ -39,6 +39,7 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
 public struct SavedPlace: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let place: Place
+    public let city: String?
     public let reelURL: String?
     public let description: String?
     public let tips: [String]?
@@ -47,7 +48,7 @@ public struct SavedPlace: Codable, Identifiable, Hashable, Sendable {
     public let savedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, place, description, tips, confidence
+        case id, place, city, description, tips, confidence
         case reelURL = "reel_url"
         case whatToOrder = "what_to_order"
         case savedAt = "saved_at"

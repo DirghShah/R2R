@@ -8,28 +8,22 @@ struct OnboardingView: View {
     @State private var busy = false
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.96, green: 0.55, blue: 0.30).opacity(0.30),
-                         Color(red: 0.36, green: 0.42, blue: 0.85).opacity(0.18), .clear],
-                startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-
-            VStack(spacing: 20) {
-                Spacer()
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 72, weight: .semibold))
-                    .foregroundStyle(.tint)
-                Text("ReelMap").font(.system(size: 40, weight: .bold, design: .rounded))
-                Text("Every place you save from a reel —\nfinally on one map.")
-                    .font(.title3).multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                buttons
-            }
-            .padding(32)
+        VStack(spacing: 20) {
+            Spacer()
+            Image(systemName: "mappin.and.ellipse")
+                .font(.system(size: 72, weight: .semibold))
+                .foregroundStyle(.tint)
+            Text("ReelMap").font(.system(size: 40, weight: .bold, design: .rounded))
+            Text("Every place you save from a reel —\nfinally on one map.")
+                .font(.title3).multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Spacer()
+            buttons
         }
-        .tint(Color(red: 0.92, green: 0.45, blue: 0.20))
+        .padding(32)
+        .background(
+            LinearGradient(colors: [Color.appAccent.opacity(0.18), .clear],
+                           startPoint: .top, endPoint: .center).ignoresSafeArea())
     }
 
     private var buttons: some View {
@@ -39,7 +33,7 @@ struct OnboardingView: View {
                 Label("Continue (dev)", systemImage: "hammer.fill")
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .disabled(busy)
             #endif
 
