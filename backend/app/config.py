@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     reel_fetcher: str = "apify"  # apify | ytdlp | stub
     apify_token: str | None = None
     apify_actor: str = "apify/instagram-scraper"
+    apify_cost_per_reel: float = 0.005  # rough estimate ($/reel) for the cost log
 
     # --- Geocoding ---
     google_places_api_key: str | None = None

@@ -6,6 +6,7 @@ import SwiftUI
 /// Same backend pipeline as the native share sheet — works on a free account.
 struct AddReelScreen: View {
     @Environment(\.modelContext) private var context
+    @FocusState private var focused: Bool
     @State private var url = ""
     @State private var phase: Phase = .idle
 
@@ -23,8 +24,18 @@ struct AddReelScreen: View {
                     statusView
                 }
                 .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { focused = false }   // tap anywhere outside the field
             }
+            .scrollDismissesKeyboard(.immediately)  // drag to dismiss
             .navigationTitle("Add a place")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focused = false }
+                }
+            }
         }
     }
 
@@ -41,14 +52,17 @@ struct AddReelScreen: View {
 
     private var inputCard: some View {
         VStack(spacing: 12) {
-            TextField("https://www.instagram.com/reel/…", text: $url, axis: .vertical)
+            TextField("https://www.instagram.com/reel/…", text: $url)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
-                .lineLimit(1...3)
+                .submitLabel(.go)
+                .focused($focused)
+                .onSubmit { focused = false; Task { await submit() } }
             Divider()
             Button {
                 if let s = UIPasteboard.general.string { url = s }
+                focused = false
             } label: {
                 Label("Paste from clipboard", systemImage: "doc.on.clipboard")
                     .font(.subheadline.weight(.medium))
@@ -61,7 +75,7 @@ struct AddReelScreen: View {
     }
 
     private var analyzeButton: some View {
-        Button { Task { await submit() } } label: {
+        Button { focused = false; Task { await submit() } } label: {
             HStack {
                 if isWorking { ProgressView().tint(.white); Spacer().frame(width: 8) }
                 Text("Analyze reel").font(.headline)
@@ -99,9 +113,11 @@ struct AddReelScreen: View {
     // MARK: Flow
 
     private func submit() async {
+        let link = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !link.isEmpty else { return }
         phase = .working("Submitting…")
         do {
-            let submitted = try await APIClient.shared.submitReel(url: url)
+            let submitted = try await APIClient.shared.submitReel(url: link)
             phase = .working("Analyzing… (~15–60s)")
             try await poll(submitted.reelID)
         } catch {

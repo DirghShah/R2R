@@ -13,6 +13,7 @@ Pydantic `output_format`) guarantee valid JSON — no brittle string parsing.
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 
 import anthropic
 from pydantic import BaseModel, Field
@@ -74,6 +75,13 @@ class ReelExtraction(BaseModel):
 
 class ExtractionRefused(RuntimeError):
     """Claude declined the request (safety classifier)."""
+
+
+@dataclass
+class ExtractionResult:
+    extraction: ReelExtraction
+    input_tokens: int
+    output_tokens: int
 
 
 SYSTEM_PROMPT = """You extract every real-world place (cafes, restaurants, hotels, bars, clubs, \
@@ -177,7 +185,7 @@ def extract_places(
     tagged_location: str | None = None,
     hashtags: list[str] | None = None,
     frames: list[bytes] | None = None,
-) -> ReelExtraction:
+) -> ExtractionResult:
     """Fuse all reel signals into a structured place list via one Claude call."""
     text = _build_text(
         caption=caption,
@@ -201,4 +209,9 @@ def extract_places(
         detail = getattr(resp, "stop_details", None)
         raise ExtractionRefused(f"Claude refused extraction: {detail}")
 
-    return resp.parsed_output
+    usage = resp.usage
+    return ExtractionResult(
+        extraction=resp.parsed_output,
+        input_tokens=getattr(usage, "input_tokens", 0) or 0,
+        output_tokens=getattr(usage, "output_tokens", 0) or 0,
+    )

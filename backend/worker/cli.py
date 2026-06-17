@@ -48,8 +48,10 @@ def main(argv: list[str] | None = None) -> int:
         hashtags=data.hashtags,
         frames=sampled,
     )
-    print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))
-    print(f"\n# extracted {len(result.places)} place(s)", file=sys.stderr)
+    print(json.dumps(result.extraction.model_dump(), indent=2, ensure_ascii=False))
+    print(f"\n# extracted {len(result.extraction.places)} place(s) | "
+          f"claude tokens in={result.input_tokens} out={result.output_tokens}",
+          file=sys.stderr)
     return 0
 
 

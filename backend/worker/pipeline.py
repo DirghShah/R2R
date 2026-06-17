@@ -6,12 +6,13 @@ the new user (the reel-derived context is copied from a prior UserPlace).
 """
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-import logging
-
+from app.config import settings
 from app.db import session
 from app.models import City, Collection, Place, ReelSource, UserPlace
 from worker import extract, frames, geocode, push
@@ -24,6 +25,43 @@ _CATEGORY_TITLES = {
     "bar": "bars", "club": "nightlife", "sight": "sightseeing",
     "event": "events", "other": "saved places",
 }
+
+# Claude pricing per 1M tokens (input, output). Keep in sync with the model in use.
+_CLAUDE_PRICES = {
+    "claude-haiku-4-5": (1.0, 5.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-opus-4-8": (5.0, 25.0),
+}
+
+
+def _claude_cost(model: str, in_tokens: int, out_tokens: int) -> float:
+    p_in, p_out = _CLAUDE_PRICES.get(model, _CLAUDE_PRICES["claude-opus-4-8"])
+    return in_tokens / 1_000_000 * p_in + out_tokens / 1_000_000 * p_out
+
+
+def _log_metrics(reel: ReelSource, count: int, seconds: float,
+                 in_tok: int, out_tok: int) -> dict:
+    claude_cost = _claude_cost(settings.anthropic_model, in_tok, out_tok)
+    apify_cost = settings.apify_cost_per_reel if settings.reel_fetcher == "apify" else 0.0
+    # Geocoding: nominatim is free; google would add ~$0.017/place (Text+Details).
+    geo_cost = 0.0 if settings.geocoder == "nominatim" else round(0.017 * count, 4)
+    total = claude_cost + apify_cost + geo_cost
+    summary = {
+        "reel": reel.canonical_id,
+        "places": count,
+        "duration_s": round(seconds, 1),
+        "claude_model": settings.anthropic_model,
+        "claude_in_tokens": in_tok,
+        "claude_out_tokens": out_tok,
+        "claude_cost_usd": round(claude_cost, 4),
+        "apify_cost_usd": round(apify_cost, 4),
+        "geocode_cost_usd": geo_cost,
+        "total_cost_usd": round(total, 4),
+    }
+    # print() guarantees visibility in `docker compose logs worker`.
+    print(f"[metrics] {summary}", flush=True)
+    log.info("analyze_reel metrics: %s", summary)
+    return summary
 
 
 def analyze_reel(reel_id: str, user_id: str) -> dict:
@@ -41,8 +79,9 @@ def analyze_reel(reel_id: str, user_id: str) -> dict:
         reel.status = "processing"
         db.commit()
 
+        started = time.monotonic()
         try:
-            count = _run_analysis(db, reel, user_id)
+            count, in_tok, out_tok = _run_analysis(db, reel, user_id)
             reel.status = "done"
             reel.analyzed_at = datetime.now(timezone.utc)
             db.commit()
@@ -50,15 +89,17 @@ def analyze_reel(reel_id: str, user_id: str) -> dict:
             reel.status = "failed"
             reel.error = str(exc)[:500]
             db.commit()
+            print(f"[metrics] analyze FAILED reel={reel.canonical_id} error={reel.error}", flush=True)
             return {"status": "failed", "error": reel.error}
 
+        metrics = _log_metrics(reel, count, time.monotonic() - started, in_tok, out_tok)
         _notify(user_id, count, reel)
-        return {"status": "done", "places": count}
+        return {"status": "done", "places": count, "metrics": metrics}
     finally:
         db.close()
 
 
-def _run_analysis(db, reel: ReelSource, user_id: str) -> int:
+def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
     data = get_fetcher().fetch(reel.url)
     reel.caption = data.caption
     reel.author_handle = data.author_handle
@@ -81,16 +122,16 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> int:
         hashtags=data.hashtags,
         frames=sampled,
     )
-    reel.summary = result.overall_summary
+    reel.summary = result.extraction.overall_summary
 
     saved = 0
-    for ep in result.places:
+    for ep in result.extraction.places:
         geo = geocode.geocode(ep)
         place = _upsert_place(db, ep, geo)
         _upsert_user_place(db, user_id, place, reel, ep)
         _bucket_collection(db, user_id, place)
         saved += 1
-    return saved
+    return saved, result.input_tokens, result.output_tokens
 
 
 def _upsert_place(db, ep, geo) -> Place:
