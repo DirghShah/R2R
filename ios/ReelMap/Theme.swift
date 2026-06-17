@@ -70,9 +70,9 @@ enum MapFilter: String, CaseIterable, Identifiable {
     }
 }
 
-/// The app accent — a warm, modern terracotta.
+/// The app accent — a calm, cool eucalyptus green.
 extension Color {
-    static let appAccent = Color(red: 0.92, green: 0.45, blue: 0.20)
+    static let appAccent = Color(red: 0.16, green: 0.52, blue: 0.42)
 }
 
 /// Subtle material card: thin material, hairline border, soft shadow.
