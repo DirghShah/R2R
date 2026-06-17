@@ -26,8 +26,8 @@ class ApifyFetcher:
         resp = httpx.post(
             endpoint,
             params={"token": settings.apify_token},
-            json={"directUrls": [url], "resultsLimit": 1},
-            timeout=120,
+            json={"directUrls": [url], "resultsType": "details", "resultsLimit": 1},
+            timeout=180,
         )
         resp.raise_for_status()
         items = resp.json()
@@ -35,23 +35,45 @@ class ApifyFetcher:
             raise RuntimeError(f"Apify returned no data for {url!r}")
         item = items[0]
 
-        caption = item.get("caption") or item.get("text")
-        location = item.get("locationName")
+        caption = _first(item, "caption", "text", "title")
         return ReelData(
             canonical_id=canonical_id(url),
             url=url,
             caption=caption,
-            author_handle=item.get("ownerUsername"),
-            thumbnail_url=item.get("displayUrl"),
-            video_url=item.get("videoUrl"),
+            author_handle=_first(item, "ownerUsername", "ownerUserName", "username"),
+            thumbnail_url=_first(item, "displayUrl", "imageUrl", "thumbnailUrl"),
+            video_url=_first(item, "videoUrl", "videoUrlHd", "videoUrlBackup"),
             at_handles=_collect_handles(item, caption),
-            tagged_location=location,
+            tagged_location=_location(item),
             hashtags=item.get("hashtags") or parse_hashtags(caption),
         )
 
 
+def _first(item: dict, *keys: str) -> str | None:
+    """First non-empty value among the given keys (actors vary in naming)."""
+    for k in keys:
+        v = item.get(k)
+        if v:
+            return v
+    return None
+
+
+def _location(item: dict) -> str | None:
+    loc = item.get("locationName")
+    if loc:
+        return loc
+    nested = item.get("location")
+    if isinstance(nested, dict):
+        return nested.get("name")
+    return None
+
+
 def _collect_handles(item: dict, caption: str | None) -> list[str]:
     handles = list(parse_handles(caption))
+    for source in (item.get("mentions") or []):
+        h = source.lstrip("@") if isinstance(source, str) else None
+        if h and h not in handles:
+            handles.append(h)
     for tag in item.get("taggedUsers") or []:
         username = tag.get("username") if isinstance(tag, dict) else None
         if username and username not in handles:

@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # --- Reel fetching (Instagram) ---
     reel_fetcher: str = "apify"  # apify | ytdlp | stub
     apify_token: str | None = None
-    apify_actor: str = "apify/instagram-reel-scraper"
+    apify_actor: str = "apify/instagram-scraper"
 
     # --- Geocoding ---
     google_places_api_key: str | None = None

@@ -55,9 +55,10 @@ Full design lives in `README.md`, `backend/README.md`, `ios/README.md`.
 3. Add `APIFY_TOKEN` (+ `REEL_FETCHER=apify`) to test real reels; add
    `GOOGLE_PLACES_API_KEY` (+ `GEOCODER=google`) for better pins.
 4. iOS (free Apple ID): `cd ios && xcodegen generate`, set Team + `API_BASE_URL`,
-   build on Simulator/iPhone. Use **Dev sign in** + the **Add tab** (paste a reel
-   link) to test the full flow. The native Instagram share (Share Extension +
-   App Group) is paid-only and opt-in — see ios/README.md.
+   build on Simulator/iPhone. No sign-in screen — the app auto-acquires a `dev:`
+   session on launch (`AppState.start()`); use the **Add tab** (paste a reel link)
+   to test. Native Instagram share (Share Extension + App Group) is paid-only and
+   opt-in — see ios/README.md.
 
 ## Conventions / guardrails
 - Claude model is config-driven (`ANTHROPIC_MODEL`); default in code is opus, dev uses haiku.

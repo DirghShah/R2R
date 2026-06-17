@@ -29,26 +29,25 @@ open ReelMap.xcodeproj
 3. **Signing:** select the `ReelMap` target → Signing & Capabilities → pick your
    Team (a free personal Apple ID works). No special capabilities are required.
 4. **Build & Run** on the Simulator or your plugged-in iPhone.
-5. In the app: tap **Dev sign in** (DEBUG) → **Add** tab → paste any Instagram
-   reel link (or any URL while on `stub`) → **Analyze reel** → watch the **Map**
-   and **Lists** tabs populate.
+5. There's **no sign-in screen** — the app auto-acquires a dev session on launch
+   and lands on the map. Go to the **Add** tab → paste an Instagram reel link →
+   **Analyze reel** → watch the **Map** and **Lists** tabs populate.
 
 > Free personal teams re-sign every 7 days — just re-run from Xcode when the app
 > stops launching. `NSAllowsArbitraryLoads` is enabled for dev so the device can
 > reach your Mac over plain HTTP; remove it before shipping.
 
-## How testing differs from production
-- **Login:** the **Dev sign in** button calls the backend's `dev:` auth (works
-  when `ENVIRONMENT=dev`). Real Sign in with Apple needs the paid program.
-- **Adding reels:** the **Add tab** (paste a link) replaces the native share
-  sheet and exercises the exact same backend pipeline.
+## Auth (current)
+No login UI for now: on launch the app silently calls the backend's `dev:` auth
+(works when `ENVIRONMENT=dev`) and stores the token. Replace `AppState.start()`'s
+`dev:me` with real Sign in with Apple when you move to the paid program.
 
 ## Structure
 
 | Target | Role |
 |---|---|
 | `SharedKit` | `Models`, async `APIClient`, `AuthStore` (Keychain) |
-| `ReelMap` | app: `MapScreen`, `CityListsScreen`, `PlaceDetailScreen`, `AddReelScreen`, `OnboardingView` |
+| `ReelMap` | app: `MapScreen`, `CityListsScreen`, `PlaceDetailScreen`, `AddReelScreen`; `Persistence` (SwiftData cache) |
 | `ShareExtension` | (paid only) native Instagram share intake — disabled by default |
 
 ## Enabling the Share Extension (paid Apple Developer Program)
