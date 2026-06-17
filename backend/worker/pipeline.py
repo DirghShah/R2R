@@ -10,10 +10,14 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+import logging
+
 from app.db import session
 from app.models import City, Collection, Place, ReelSource, UserPlace
 from worker import extract, frames, geocode, push
 from worker.fetchers import get_fetcher
+
+log = logging.getLogger(__name__)
 
 _CATEGORY_TITLES = {
     "cafe": "cafes", "restaurant": "restaurants", "hotel": "hotels",
@@ -82,8 +86,6 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> int:
     saved = 0
     for ep in result.places:
         geo = geocode.geocode(ep)
-        if geo is None:
-            continue  # don't pin a place we can't locate
         place = _upsert_place(db, ep, geo)
         _upsert_user_place(db, user_id, place, reel, ep)
         _bucket_collection(db, user_id, place)
@@ -92,20 +94,21 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> int:
 
 
 def _upsert_place(db, ep, geo) -> Place:
-    city = _get_or_create_city(db, geo.city or ep.city, geo.country or ep.country)
+    city = _get_or_create_city(db, geo.city or ep.city, geo.country)
     place = None
     if geo.external_place_id:
         place = db.scalar(select(Place).where(Place.external_place_id == geo.external_place_id))
     if place is None:
-        place = Place(external_place_id=geo.external_place_id, name=geo.name)
+        place = Place(external_place_id=geo.external_place_id, name=geo.name or ep.name)
         db.add(place)
     place.name = geo.name or ep.name
     place.category = ep.category
-    place.lat, place.lng = geo.lat, geo.lng
+    place.lat = geo.lat
+    place.lng = geo.lng
     place.address = geo.address
     place.rating = geo.rating
     place.price_level = geo.price_level
-    place.photos = geo.photos
+    place.photos = geo.photos or None
     place.hours = geo.hours
     place.city = city
     db.flush()
@@ -127,9 +130,14 @@ def _upsert_user_place(db, user_id: str, place: Place, reel: ReelSource, ep) -> 
         place_id=place.id,
         reel_source_id=reel.id,
         description=ep.description,
-        tips=ep.tips,
-        what_to_order=ep.what_to_order,
-        sources=ep.sources,
+        tips=ep.tips or [],
+        what_to_order=ep.what_to_order or [],
+        vibe=ep.vibe or [],
+        instagram_handle=ep.instagram_handle,
+        website=ep.website,
+        hours_hint=ep.hours_hint,
+        price_level_ai=ep.price_level,
+        sources=[],
         confidence=ep.confidence,
     )
     db.add(up)
@@ -188,6 +196,8 @@ def _link_existing_to_user(db, reel: ReelSource, user_id: str) -> int:
         db.add(UserPlace(
             user_id=user_id, place_id=t.place_id, reel_source_id=reel.id,
             description=t.description, tips=t.tips, what_to_order=t.what_to_order,
+            vibe=t.vibe, instagram_handle=t.instagram_handle, website=t.website,
+            hours_hint=t.hours_hint, price_level_ai=t.price_level_ai,
             sources=t.sources, confidence=t.confidence,
         ))
         place = db.get(Place, t.place_id)

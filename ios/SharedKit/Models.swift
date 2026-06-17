@@ -44,13 +44,21 @@ public struct SavedPlace: Codable, Identifiable, Hashable, Sendable {
     public let description: String?
     public let tips: [String]?
     public let whatToOrder: [String]?
+    public let vibe: [String]?
+    public let instagramHandle: String?
+    public let website: String?
+    public let hoursHint: String?
+    public let priceLevelAI: Int?
     public let confidence: Double?
     public let savedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, place, city, description, tips, confidence
+        case id, place, city, description, tips, confidence, vibe, website
         case reelURL = "reel_url"
         case whatToOrder = "what_to_order"
+        case instagramHandle = "instagram_handle"
+        case hoursHint = "hours_hint"
+        case priceLevelAI = "price_level_ai"
         case savedAt = "saved_at"
     }
 }

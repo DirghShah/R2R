@@ -19,24 +19,41 @@ final class CachedPlace {
     var summary: String?
     var tips: [String]
     var whatToOrder: [String]
+    var vibe: [String]
+    var instagramHandle: String?
+    var website: String?
+    var hoursHint: String?
+    var priceLevelAI: Int?
     var city: String?
     var savedAt: Date
 
-    init(id: String, name: String, category: String, lat: Double?, lng: Double?,
-         address: String?, rating: Double?, reelURL: String?, summary: String?,
-         tips: [String], whatToOrder: [String], city: String?, savedAt: Date) {
+    init(
+        id: String, name: String, category: String,
+        lat: Double?, lng: Double?, address: String?, rating: Double?,
+        reelURL: String?, summary: String?,
+        tips: [String], whatToOrder: [String], vibe: [String],
+        instagramHandle: String?, website: String?, hoursHint: String?,
+        priceLevelAI: Int?, city: String?, savedAt: Date
+    ) {
         self.id = id; self.name = name; self.category = category
         self.lat = lat; self.lng = lng; self.address = address; self.rating = rating
         self.reelURL = reelURL; self.summary = summary
-        self.tips = tips; self.whatToOrder = whatToOrder; self.city = city; self.savedAt = savedAt
+        self.tips = tips; self.whatToOrder = whatToOrder; self.vibe = vibe
+        self.instagramHandle = instagramHandle; self.website = website
+        self.hoursHint = hoursHint; self.priceLevelAI = priceLevelAI
+        self.city = city; self.savedAt = savedAt
     }
 
     convenience init(dto: SavedPlace) {
-        self.init(id: dto.id, name: dto.place.name, category: dto.place.category,
-                  lat: dto.place.lat, lng: dto.place.lng, address: dto.place.address,
-                  rating: dto.place.rating, reelURL: dto.reelURL, summary: dto.description,
-                  tips: dto.tips ?? [], whatToOrder: dto.whatToOrder ?? [],
-                  city: dto.city, savedAt: dto.savedAt)
+        self.init(
+            id: dto.id, name: dto.place.name, category: dto.place.category,
+            lat: dto.place.lat, lng: dto.place.lng, address: dto.place.address,
+            rating: dto.place.rating, reelURL: dto.reelURL, summary: dto.description,
+            tips: dto.tips ?? [], whatToOrder: dto.whatToOrder ?? [], vibe: dto.vibe ?? [],
+            instagramHandle: dto.instagramHandle, website: dto.website,
+            hoursHint: dto.hoursHint, priceLevelAI: dto.priceLevelAI,
+            city: dto.city, savedAt: dto.savedAt
+        )
     }
 
     var categoryEnum: PlaceCategory { PlaceCategory(rawValue: category) ?? .other }
@@ -44,6 +61,12 @@ final class CachedPlace {
     var coordinate: CLLocationCoordinate2D? {
         guard let lat, let lng else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+    }
+
+    /// "$", "$$", "$$$", "$$$$" — nil if unknown
+    var priceString: String? {
+        guard let p = priceLevelAI, (1...4).contains(p) else { return nil }
+        return String(repeating: "$", count: p)
     }
 }
 

@@ -6,7 +6,7 @@ The whole product hinges on this step. No single reel signal is complete:
 - audio is frequently music-only,
 - @mentions / tagged location anchor geocoding.
 
-So we hand Claude *every* available signal at once and let it reconcile them
+We hand Claude *every* available signal at once and let it reconcile them
 into a deduped, schema-valid list. Structured outputs (`messages.parse` with a
 Pydantic `output_format`) guarantee valid JSON — no brittle string parsing.
 """
@@ -22,54 +22,100 @@ from app.config import settings
 CATEGORIES = "cafe | restaurant | hotel | bar | club | sight | event | other"
 
 
-class Place(BaseModel):
-    name: str
+class ExtractedPlace(BaseModel):
+    name: str = Field(description="Full proper name of the place")
     category: str = Field(description=CATEGORIES)
-    city: str | None = None
-    country: str | None = None
-    neighborhood: str | None = Field(default=None, description="geocode hint, e.g. 'Williamsburg'")
-    instagram_handle: str | None = Field(default=None, description="@venue tag without the @")
-    address_hint: str | None = Field(default=None, description="literal address text seen; never invented")
-    description: str = Field(description="1-2 line summary of the place from the reel")
-    tips: list[str] = Field(default_factory=list, description="e.g. 'go at sunrise', 'cash only'")
-    what_to_order: list[str] = Field(default_factory=list)
-    sources: list[str] = Field(default_factory=list, description="any of: on_screen, caption, audio, tag")
-    confidence: float = Field(description="0.0-1.0 confidence this is a real, correctly-named place")
+    city: str | None = Field(default=None, description="City, inferred from all signals")
+    neighborhood: str | None = Field(default=None, description="Neighborhood/district e.g. 'Bishop Arts'")
+    instagram_handle: str | None = Field(
+        default=None,
+        description="Venue's @handle without the @. Strongest geocoding key — always capture.",
+    )
+    website: str | None = Field(
+        default=None,
+        description="Full URL if visible or confidently inferable from the handle. Null if unsure.",
+    )
+    description: str = Field(
+        description="2-3 vivid sentences about what makes this place special. Write as a recommendation."
+    )
+    vibe: list[str] = Field(
+        default_factory=list,
+        description="2-4 atmosphere tags from what the reel shows: e.g. 'cozy', 'study spot', 'aesthetic'.",
+    )
+    tips: list[str] = Field(
+        default_factory=list,
+        description="Practical tips from the reel: hours quirks, must-knows, ordering advice.",
+    )
+    what_to_order: list[str] = Field(
+        default_factory=list,
+        description="Specific menu items called out in the reel.",
+    )
+    price_level: int | None = Field(
+        default=None,
+        description="1=$  2=$$  3=$$$  4=$$$$ — only set if mentioned or clearly implied.",
+    )
+    hours_hint: str | None = Field(
+        default=None,
+        description="Hours info if mentioned e.g. 'open late', 'breakfast only'.",
+    )
+    confidence: float = Field(
+        description="0–1. Caption numbered list + @handle = ≥ 0.9. Ambiguous = lower."
+    )
 
 
 class ReelExtraction(BaseModel):
-    places: list[Place]
+    places: list[ExtractedPlace]
     overall_summary: str
+    primary_city: str | None = Field(
+        default=None,
+        description="Main city this reel is about.",
+    )
 
 
 class ExtractionRefused(RuntimeError):
     """Claude declined the request (safety classifier)."""
 
 
-SYSTEM_PROMPT = """You extract real-world places (cafes, restaurants, hotels, \
-bars, clubs, sights, events) that a short-form travel/food video recommends, so \
-they can be pinned on a map.
+SYSTEM_PROMPT = """You extract every real-world place (cafes, restaurants, hotels, bars, clubs, \
+sights, events) that a short-form travel/food reel recommends or features, so they can be pinned on a map.
 
-You are given a mix of signals from one Instagram reel: the caption, the audio \
-transcript (may be empty if the reel is music-only), tagged @accounts, a tagged \
-location, hashtags, and a set of sampled video frames. The frames usually contain \
-the most important information as on-screen TEXT OVERLAYS — read that text \
-carefully; it often holds the exact place name, what to order, and tips like \
-"cash only" or "go at sunrise".
+You receive a mix of signals: the caption, audio transcript (often empty/music-only), \
+tagged @accounts, a tagged location, hashtags, and sampled video frames. The frames frequently \
+contain on-screen TEXT OVERLAYS — read every word carefully; they hold place names, menu items, \
+tips, and addresses.
 
-Rules:
-- Merge ALL signals. Cross-check them: a name seen on screen but spelled \
-ambiguously can be confirmed by an @tag or the caption.
-- Deduplicate: the same place mentioned on screen and in the caption is ONE place.
-- Only include places the reel actually recommends or features. Do not invent \
-places, and NEVER invent a street address — leave address_hint null unless real \
-address text is present. Geocoding happens downstream.
-- For each place set `sources` to the signals it came from (on_screen, caption, \
-audio, tag) and a calibrated `confidence`. Keep low-confidence guesses but mark \
-them as such rather than dropping or fabricating.
-- `instagram_handle` should be the venue's @handle (without the @) when present \
-— it is the strongest geocoding key.
-- Pick the single best `category` per place from: %s.""" % CATEGORIES
+## Completeness is the #1 priority
+
+A numbered caption list (1. … 2. … 3. …) is the gold standard — every numbered item IS a real \
+place recommendation. Extract ALL of them. Never skip a place because it seems obscure or hard \
+to geocode. Geocoding happens downstream; your job is to surface every place in the reel.
+
+If the caption says "9 best cafes in Dallas" and lists 9 places with @handles, you MUST return \
+exactly 9 places.
+
+## Signal fusion rules
+
+- **Merge** all signals. A name seen on-screen confirmed by an @tag or caption item is one place.
+- **Deduplicate**: the same place from multiple signals = one entry, not two.
+- **City/country inference**: use every available clue (tagged location, caption text, hashtags, \
+on-screen text) to infer the city and country for each place. Set `primary_city` / `primary_country` \
+at the top level, then inherit them for all places unless a specific place clearly belongs elsewhere.
+- **Instagram handle**: extract the @handle (without @) from caption mentions like `@ottoscoffee` \
+or `@funnylibrarycoffee` — this is the strongest geocoding key and must always be captured.
+- **Website**: if the venue's website URL is visible in the video or caption, include it. \
+If you can confidently infer it from the handle (e.g. @ottoscoffee → https://ottoscoffee.com, \
+@lalalandkindcafe → https://lalalandkindcafe.com), include it. Leave null when uncertain.
+- **Vibe/atmosphere**: extract 2-5 tags from what the video actually shows (music, color palette, \
+crowd, lighting, seating style) and what the creator says. Don't invent; only tag what the reel conveys.
+- **Tips**: pull every practical tip from audio, on-screen text, and caption descriptions. \
+The caption often has the richest tip content ("fuel your jet lag", "buy a book and enjoy a coffee for free").
+- **What to order**: note any specific items called out visually or verbally.
+- **Price level**: only set if mentioned or clearly shown ($, $$, etc.).
+- **Confidence**: places named in a numbered caption list with an @handle are ≥ 0.9. \
+Partially-seen or ambiguous places may be lower. Keep low-confidence places — mark them, don't drop them.
+- **Do NOT invent addresses** — leave `address_hint` null unless literal address text is present.
+
+Pick the single best `category` per place from: %s.""" % CATEGORIES
 
 
 _client: anthropic.Anthropic | None = None
@@ -78,7 +124,6 @@ _client: anthropic.Anthropic | None = None
 def _get_client() -> anthropic.Anthropic:
     global _client
     if _client is None:
-        # Reads ANTHROPIC_API_KEY from env if anthropic_api_key isn't set.
         _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     return _client
 
@@ -111,6 +156,16 @@ def _build_text(
         parts.append(f"AUDIO TRANSCRIPT:\n{transcript}")
     else:
         parts.append("AUDIO TRANSCRIPT: (none — likely music-only; rely on frames + caption)")
+
+    # Count numbered items in caption as an explicit completeness hint
+    if caption:
+        numbered = [ln.strip() for ln in caption.splitlines() if ln.strip()[:2].rstrip(".").isdigit()]
+        if numbered:
+            parts.append(
+                f"\nNOTE: The caption contains {len(numbered)} numbered items. "
+                f"Your response MUST include all {len(numbered)} as separate places."
+            )
+
     return "\n\n".join(parts)
 
 
@@ -134,12 +189,9 @@ def extract_places(
     content: list[dict] = [{"type": "text", "text": text}]
     content += [_image_block(f) for f in (frames or [])]
 
-    # Structured outputs constrain the response to the schema, so thinking is left
-    # off here deliberately: this is a high-volume, well-scoped extraction path
-    # where latency/cost matter more than open-ended reasoning.
     resp = _get_client().messages.parse(
         model=settings.anthropic_model,
-        max_tokens=4000,
+        max_tokens=6000,
         system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": content}],
         output_format=ReelExtraction,

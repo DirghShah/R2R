@@ -41,6 +41,11 @@ class UserPlaceOut(BaseModel):
     description: str | None = None
     tips: list | None = None
     what_to_order: list | None = None
+    vibe: list | None = None
+    instagram_handle: str | None = None
+    website: str | None = None
+    hours_hint: str | None = None
+    price_level_ai: int | None = None
     confidence: float | None = None
     saved_at: datetime
 

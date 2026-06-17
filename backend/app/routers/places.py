@@ -39,6 +39,11 @@ def list_places(
                 description=up.description,
                 tips=up.tips,
                 what_to_order=up.what_to_order,
+                vibe=up.vibe,
+                instagram_handle=up.instagram_handle,
+                website=up.website,
+                hours_hint=up.hours_hint,
+                price_level_ai=up.price_level_ai,
                 confidence=up.confidence,
                 saved_at=up.saved_at,
             )
