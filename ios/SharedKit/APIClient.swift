@@ -83,7 +83,7 @@ public actor APIClient {
 
     private func perform(
         _ path: String, method: String,
-        body: (any Encodable)?, authed: Bool
+        body: (any Encodable)?, authed: Bool, isRetry: Bool = false
     ) async throws -> Data {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = method
@@ -97,6 +97,16 @@ public actor APIClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse else {
             throw APIError(status: -1, message: "No response")
+        }
+        // Self-heal a stale/expired session (e.g. the DB was reset but the old
+        // token is still cached): clear it, re-acquire a session, retry once.
+        if http.statusCode == 401, authed, !isRetry {
+            AuthStore.token = nil
+            #if DEBUG
+            if (try? await signInWithApple(identityToken: "dev:me")) != nil {
+                return try await perform(path, method: method, body: body, authed: authed, isRetry: true)
+            }
+            #endif
         }
         guard (200..<300).contains(http.statusCode) else {
             let msg = String(data: data, encoding: .utf8) ?? "Request failed"
