@@ -5,69 +5,79 @@ import SwiftUI
 struct OnboardingView: View {
     @ObservedObject var session: SessionViewModel
     @State private var error: String?
+    @State private var busy = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Image(systemName: "mappin.and.ellipse").font(.system(size: 64))
-            Text("ReelMap").font(.largeTitle.bold())
-            Text("Every place you save from Instagram, finally on one map.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Spacer()
-            #if DEBUG
-            // Free-account dev login — backend accepts `dev:` tokens when
-            // ENVIRONMENT=dev. Lets you test the whole app without the paid
-            // Sign in with Apple capability.
-            Button {
-                Task { await devSignIn() }
-            } label: {
-                Label("Dev sign in", systemImage: "hammer.fill")
-                    .frame(maxWidth: .infinity).frame(height: 50)
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.96, green: 0.55, blue: 0.30).opacity(0.30),
+                         Color(red: 0.36, green: 0.42, blue: 0.85).opacity(0.18), .clear],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Spacer()
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 72, weight: .semibold))
+                    .foregroundStyle(.tint)
+                Text("ReelMap").font(.system(size: 40, weight: .bold, design: .rounded))
+                Text("Every place you save from a reel —\nfinally on one map.")
+                    .font(.title3).multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                buttons
             }
-            .buttonStyle(.borderedProminent)
+            .padding(32)
+        }
+        .tint(Color(red: 0.92, green: 0.45, blue: 0.20))
+    }
+
+    private var buttons: some View {
+        VStack(spacing: 12) {
+            #if DEBUG
+            Button { Task { await signIn("dev:me") } } label: {
+                Label("Continue (dev)", systemImage: "hammer.fill")
+                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(busy)
             #endif
 
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = [.fullName, .email]
+            SignInWithAppleButton(.continue) { req in
+                req.requestedScopes = [.fullName, .email]
             } onCompletion: { result in
-                Task { await handle(result) }
+                Task { await handleApple(result) }
             }
             .signInWithAppleButtonStyle(.black)
-            .frame(height: 50)
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
-        }
-        .padding(32)
-    }
+            .frame(height: 52)
+            .clipShape(.capsule)
 
-    #if DEBUG
-    private func devSignIn() async {
-        do {
-            _ = try await APIClient.shared.signInWithApple(identityToken: "dev:me")
-            session.signInCompleted()
-        } catch {
-            self.error = error.localizedDescription
+            if let error {
+                Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center)
+            }
         }
     }
-    #endif
 
-    private func handle(_ result: Result<ASAuthorization, Error>) async {
+    private func handleApple(_ result: Result<ASAuthorization, Error>) async {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential,
-                  let tokenData = cred.identityToken,
-                  let token = String(data: tokenData, encoding: .utf8) else {
-                error = "Could not read Apple credential"
-                return
+                  let data = cred.identityToken, let token = String(data: data, encoding: .utf8) else {
+                error = "Couldn't read Apple credential"; return
             }
-            do {
-                _ = try await APIClient.shared.signInWithApple(identityToken: token)
-                session.signInCompleted()
-            } catch {
-                self.error = error.localizedDescription
-            }
+            await signIn(token)
         case .failure(let err):
             error = err.localizedDescription
+        }
+    }
+
+    private func signIn(_ token: String) async {
+        busy = true; defer { busy = false }
+        do {
+            _ = try await APIClient.shared.signInWithApple(identityToken: token)
+            session.signInCompleted()
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 }

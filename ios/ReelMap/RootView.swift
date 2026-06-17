@@ -3,14 +3,13 @@ import SwiftUI
 
 struct RootView: View {
     var body: some View {
+        // iOS 26 renders the tab bar in Liquid Glass automatically.
         TabView {
-            MapScreen()
-                .tabItem { Label("Map", systemImage: "map.fill") }
-            CityListsScreen()
-                .tabItem { Label("Lists", systemImage: "list.bullet") }
-            AddReelScreen()
-                .tabItem { Label("Add", systemImage: "plus.circle.fill") }
+            Tab("Map", systemImage: "map.fill") { MapScreen() }
+            Tab("Lists", systemImage: "square.stack.3d.up.fill") { CityListsScreen() }
+            Tab("Add", systemImage: "plus.circle.fill") { AddReelScreen() }
         }
+        .tint(Color(red: 0.92, green: 0.45, blue: 0.20)) // warm app accent
     }
 }
 

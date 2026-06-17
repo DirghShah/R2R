@@ -4,70 +4,125 @@ import SwiftUI
 
 struct PlaceDetailScreen: View {
     let saved: SavedPlace
+    @Environment(\.dismiss) private var dismiss
+
+    private var category: PlaceCategory { saved.categoryEnum }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    photos
-                    if let desc = saved.description {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    if let desc = saved.description, !desc.isEmpty {
                         Text(desc).font(.body)
                     }
-                    section("What to order", saved.whatToOrder)
-                    section("Tips", saved.tips)
-                    links
+                    card("What to order", "fork.knife", saved.whatToOrder)
+                    card("Tips", "lightbulb.fill", saved.tips)
+                    actions
                 }
-                .padding()
+                .padding(20)
             }
-            .navigationTitle(saved.place.name)
+            .background(backdrop)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.glass)
+                }
+            }
+        }
+    }
+
+    // MARK: Pieces
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            photos
+            HStack(spacing: 10) {
+                Label(category.displayName, systemImage: category.symbol)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .foregroundStyle(.white)
+                    .glassEffect(.regular.tint(category.tint), in: .capsule)
+                if let r = saved.place.rating {
+                    Label(String(format: "%.1f", r), systemImage: "star.fill")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .glassEffect(.regular, in: .capsule)
+                }
+            }
+            Text(saved.place.name).font(.largeTitle.bold())
+            if let a = saved.place.address {
+                Text(a).font(.subheadline).foregroundStyle(.secondary)
+            }
         }
     }
 
     @ViewBuilder private var photos: some View {
         if let urls = saved.place.photos, !urls.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
+                HStack(spacing: 10) {
                     ForEach(urls, id: \.self) { u in
                         AsyncImage(url: URL(string: u)) { $0.resizable().scaledToFill() }
-                            placeholder: { Color.gray.opacity(0.2) }
-                            .frame(width: 220, height: 150)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            placeholder: { category.tint.opacity(0.15) }
+                            .frame(width: 240, height: 160)
+                            .clipShape(.rect(cornerRadius: 18))
                     }
                 }
             }
         }
     }
 
-    @ViewBuilder private func section(_ title: String, _ items: [String]?) -> some View {
+    @ViewBuilder private func card(_ title: String, _ icon: String, _ items: [String]?) -> some View {
         if let items, !items.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.headline)
-                ForEach(items, id: \.self) { Label($0, systemImage: "checkmark.circle") }
+            VStack(alignment: .leading, spacing: 10) {
+                Label(title, systemImage: icon).font(.headline)
+                ForEach(items, id: \.self) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(category.tint)
+                        Text(item)
+                    }
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .glassEffect(.regular, in: .rect(cornerRadius: 20))
         }
     }
 
-    private var links: some View {
+    private var actions: some View {
         VStack(spacing: 10) {
             if let reel = saved.reelURL, let url = URL(string: reel) {
-                LinkButton("Open in Instagram", systemImage: "play.rectangle.fill") {
-                    openInstagram(url)
-                }
+                action("Open in Instagram", "play.rectangle.fill") { openInstagram(url) }
             }
-            LinkButton("Open in Google Maps", systemImage: "map.fill") { openGoogleMaps() }
-            LinkButton("Open in Apple Maps", systemImage: "location.fill") { openAppleMaps() }
+            action("Google Maps", "map.fill") { openGoogleMaps() }
+            action("Apple Maps", "location.fill") { openAppleMaps() }
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
+    }
+
+    private func action(_ title: String, _ icon: String, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Label(title, systemImage: icon)
+                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(category.tint)
+    }
+
+    private var backdrop: some View {
+        LinearGradient(colors: [category.tint.opacity(0.12), .clear],
+                       startPoint: .top, endPoint: .center)
+            .ignoresSafeArea()
     }
 
     // MARK: Deep links
 
     private func openInstagram(_ webURL: URL) {
-        // Prefer the Instagram app, fall back to the web URL.
-        if let app = URL(string: webURL.absoluteString.replacingOccurrences(
-            of: "https://www.instagram.com", with: "instagram://")),
-           UIApplication.shared.canOpenURL(app) {
+        let app = URL(string: webURL.absoluteString
+            .replacingOccurrences(of: "https://www.instagram.com", with: "instagram://"))
+        if let app, UIApplication.shared.canOpenURL(app) {
             UIApplication.shared.open(app)
         } else {
             UIApplication.shared.open(webURL)
@@ -88,20 +143,5 @@ struct PlaceDetailScreen: View {
             coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)))
         item.name = saved.place.name
         item.openInMaps()
-    }
-}
-
-private struct LinkButton: View {
-    let title: String
-    let systemImage: String
-    let action: () -> Void
-    init(_ title: String, systemImage: String, action: @escaping () -> Void) {
-        self.title = title; self.systemImage = systemImage; self.action = action
-    }
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage).frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
     }
 }

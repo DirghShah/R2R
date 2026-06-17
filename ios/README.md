@@ -5,6 +5,9 @@ SwiftUI app declared via `project.yml` (XcodeGen) — no hand-edited `pbxproj`.
 The project is set up to **build and run on a free Apple ID** (Simulator or your
 own iPhone). The paid-only native Instagram share is opt-in (see bottom).
 
+> **Requires Xcode 26 / iOS 26.** The UI uses Liquid Glass (`.glassEffect`, glass
+> button styles, glass tab bar), so your iPhone/Simulator must run iOS 26+.
+
 ## Generate & open
 
 ```bash

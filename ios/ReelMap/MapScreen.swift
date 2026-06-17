@@ -5,48 +5,132 @@ import SwiftUI
 struct MapScreen: View {
     @StateObject private var store = PlacesStore()
     @State private var selected: SavedPlace?
+    @State private var filter: MapFilter = .all
+    @State private var detail: SavedPlace?
 
     private var pins: [SavedPlace] {
-        store.places.filter { $0.place.lat != nil && $0.place.lng != nil }
+        store.places.filter { $0.coordinate != nil && filter.matches($0.categoryEnum) }
     }
 
     var body: some View {
         Map {
             ForEach(pins) { saved in
-                if let lat = saved.place.lat, let lng = saved.place.lng {
-                    Annotation(saved.place.name,
-                               coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)) {
-                        Button { selected = saved } label: {
-                            Image(systemName: category(saved).symbol)
-                                .padding(8)
-                                .background(.thinMaterial, in: Circle())
+                if let coord = saved.coordinate {
+                    Annotation(saved.place.name, coordinate: coord) {
+                        PinView(saved: saved, selected: selected?.id == saved.id) {
+                            withAnimation(.spring(duration: 0.35)) { selected = saved }
                         }
                     }
                 }
             }
         }
-        .overlay(alignment: .top) {
-            if store.places.isEmpty && !store.isLoading {
-                EmptyHint()
-            }
-        }
+        .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        .ignoresSafeArea(edges: .top)
+        .safeAreaInset(edge: .top) { filterBar }
+        .overlay(alignment: .bottom) { bottomLayer }
         .task { await store.refresh() }
         .refreshable { await store.refresh() }
-        .sheet(item: $selected) { PlaceDetailScreen(saved: $0) }
+        .sheet(item: $detail) { PlaceDetailScreen(saved: $0) }
     }
 
-    private func category(_ s: SavedPlace) -> PlaceCategory {
-        PlaceCategory(rawValue: s.place.category) ?? .other
+    private var filterBar: some View {
+        GlassEffectContainer(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(MapFilter.allCases) { f in
+                        let on = filter == f
+                        Button {
+                            withAnimation(.snappy) { filter = f; selected = nil }
+                        } label: {
+                            Label(f.label, systemImage: f.icon)
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 14).padding(.vertical, 9)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(on ? .white : .primary)
+                        .glassEffect(
+                            on ? .regular.tint(.accentColor).interactive() : .regular.interactive(),
+                            in: .capsule)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder private var bottomLayer: some View {
+        if let selected {
+            PreviewCard(saved: selected) { detail = selected }
+                .padding(.horizontal, 16).padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if store.places.isEmpty && !store.isLoading {
+            EmptyHint()
+                .padding(.horizontal, 24).padding(.bottom, 16)
+        }
+    }
+}
+
+private struct PinView: View {
+    let saved: SavedPlace
+    let selected: Bool
+    let tap: () -> Void
+
+    var body: some View {
+        Button(action: tap) {
+            VStack(spacing: 0) {
+                Image(systemName: saved.categoryEnum.symbol)
+                    .font(.system(size: selected ? 18 : 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: selected ? 46 : 38, height: selected ? 46 : 38)
+                    .glassEffect(.regular.tint(saved.categoryEnum.tint).interactive(), in: .circle)
+                Image(systemName: "arrowtriangle.down.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(saved.categoryEnum.tint)
+                    .offset(y: -2)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct PreviewCard: View {
+    let saved: SavedPlace
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 14) {
+                Image(systemName: saved.categoryEnum.symbol)
+                    .font(.title3.weight(.semibold)).foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(saved.categoryEnum.tint, in: .circle)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(saved.place.name).font(.headline).lineLimit(1)
+                    Text(saved.categoryEnum.displayName
+                         + (saved.place.address.map { " · \($0)" } ?? ""))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+            }
+            .padding(14)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
     }
 }
 
 private struct EmptyHint: View {
     var body: some View {
-        Text("Share an Instagram reel to ReelMap to drop your first pins.")
-            .font(.callout)
-            .multilineTextAlignment(.center)
-            .padding()
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .padding()
+        VStack(spacing: 6) {
+            Image(systemName: "sparkles").font(.title2)
+            Text("Your map is empty").font(.headline)
+            Text("Open the Add tab and paste an Instagram reel to drop your first pins.")
+                .font(.callout).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(20)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 }
