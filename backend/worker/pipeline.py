@@ -100,7 +100,7 @@ def analyze_reel(reel_id: str, user_id: str) -> dict:
 
 
 def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
-    data = get_fetcher().fetch(reel.url)
+    data = get_fetcher(reel.platform).fetch(reel.url)
     reel.caption = data.caption
     reel.author_handle = data.author_handle
     reel.thumbnail_url = data.thumbnail_url

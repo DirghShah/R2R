@@ -14,7 +14,7 @@ import json
 import sys
 
 from worker import extract, frames
-from worker.fetchers import StubFetcher, get_fetcher
+from worker.fetchers import StubFetcher, detect_platform, get_fetcher
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,7 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.stub and not args.url:
         p.error("provide a reel URL or --stub")
 
-    data = StubFetcher().fetch(args.url or "") if args.stub else get_fetcher().fetch(args.url)
+    if args.stub:
+        data = StubFetcher().fetch(args.url or "")
+    else:
+        data = get_fetcher(detect_platform(args.url)).fetch(args.url)
     print(f"# reel {data.canonical_id} by @{data.author_handle}", file=sys.stderr)
 
     sampled = frames.sample_frames(data.video_url)

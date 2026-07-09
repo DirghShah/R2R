@@ -153,7 +153,7 @@ struct PlaceDetailScreen: View {
     private var actions: some View {
         VStack(spacing: 10) {
             if let reel = place.reelURL, let url = URL(string: reel) {
-                action("Open in Instagram", "play.rectangle.fill") { openInstagram(url) }
+                action("Open original", "play.rectangle.fill") { openReel(url) }
             }
             if hasCoords {
                 action("Google Maps", "map.fill") { openGoogleMaps() }
@@ -196,10 +196,13 @@ struct PlaceDetailScreen: View {
 
     // MARK: Deep links
 
-    private func openInstagram(_ webURL: URL) {
-        let app = URL(string: webURL.absoluteString
-            .replacingOccurrences(of: "https://www.instagram.com", with: "instagram://"))
-        if let app, UIApplication.shared.canOpenURL(app) {
+    private func openReel(_ webURL: URL) {
+        // Deep-link into the Instagram app when applicable; TikTok / YouTube (and
+        // Safari) handle their own links, so just open the URL for those.
+        if webURL.host?.contains("instagram.com") == true,
+           let app = URL(string: webURL.absoluteString
+            .replacingOccurrences(of: "https://www.instagram.com", with: "instagram://")),
+           UIApplication.shared.canOpenURL(app) {
             UIApplication.shared.open(app)
         } else {
             UIApplication.shared.open(webURL)

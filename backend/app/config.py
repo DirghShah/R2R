@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     # --- Reel fetching (Instagram) ---
     reel_fetcher: str = "apify"  # apify | ytdlp | stub
     apify_token: str | None = None
-    apify_actor: str = "apify/instagram-scraper"
+    apify_actor: str = "apify/instagram-scraper"           # instagram
+    apify_actor_tiktok: str = "clockworks/tiktok-scraper"  # tiktok
+    apify_actor_youtube: str = "streamers/youtube-scraper"  # youtube shorts
     apify_cost_per_reel: float = 0.005  # rough estimate ($/reel) for the cost log
 
     # --- Geocoding ---

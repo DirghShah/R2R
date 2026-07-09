@@ -1,92 +1,61 @@
-"""Instagram reel fetchers.
-
-ApifyFetcher  — MVP path: hand the URL to an Apify actor and normalize the result.
-StubFetcher   — offline/dev path: returns a fixed sample reel so the pipeline and
-                extraction can be exercised end-to-end without any vendor or
-                network. Useful for the make-or-break CLI test.
-"""
+"""Instagram reel fetcher (Apify) + an offline stub for local dev."""
 from __future__ import annotations
 
 import httpx
 
 from app.config import settings
 
-from .base import ReelData, canonical_id, parse_handles, parse_hashtags
+from .base import (
+    ReelData,
+    canonical_id,
+    collect_handles,
+    first_value,
+    location_name,
+    normalize_hashtags,
+)
 
 _APIFY_RUN_SYNC = "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
 
 
-class ApifyFetcher:
+def apify_run(actor: str, payload: dict) -> dict:
+    """Run an Apify actor synchronously and return the first dataset item."""
+    if not settings.apify_token:
+        raise RuntimeError("APIFY_TOKEN is not configured")
+    endpoint = _APIFY_RUN_SYNC.format(actor=actor.replace("/", "~"))
+    resp = httpx.post(endpoint, params={"token": settings.apify_token}, json=payload, timeout=180)
+    resp.raise_for_status()
+    items = resp.json()
+    if not items:
+        raise RuntimeError("Apify returned no data")
+    return items[0]
+
+
+class InstagramFetcher:
     def fetch(self, url: str) -> ReelData:
-        if not settings.apify_token:
-            raise RuntimeError("APIFY_TOKEN is not configured")
-
-        actor = settings.apify_actor.replace("/", "~")
-        endpoint = _APIFY_RUN_SYNC.format(actor=actor)
-        resp = httpx.post(
-            endpoint,
-            params={"token": settings.apify_token},
-            json={"directUrls": [url], "resultsType": "details", "resultsLimit": 1},
-            timeout=180,
-        )
-        resp.raise_for_status()
-        items = resp.json()
-        if not items:
-            raise RuntimeError(f"Apify returned no data for {url!r}")
-        item = items[0]
-
-        caption = _first(item, "caption", "text", "title")
+        item = apify_run(settings.apify_actor,
+                         {"directUrls": [url], "resultsType": "details", "resultsLimit": 1})
+        caption = first_value(item, "caption", "text", "title")
         return ReelData(
             canonical_id=canonical_id(url),
             url=url,
+            platform="instagram",
             caption=caption,
-            author_handle=_first(item, "ownerUsername", "ownerUserName", "username"),
-            thumbnail_url=_first(item, "displayUrl", "imageUrl", "thumbnailUrl"),
-            video_url=_first(item, "videoUrl", "videoUrlHd", "videoUrlBackup"),
-            at_handles=_collect_handles(item, caption),
-            tagged_location=_location(item),
-            hashtags=item.get("hashtags") or parse_hashtags(caption),
+            author_handle=first_value(item, "ownerUsername", "ownerUserName", "username"),
+            thumbnail_url=first_value(item, "displayUrl", "imageUrl", "thumbnailUrl"),
+            video_url=first_value(item, "videoUrl", "videoUrlHd", "videoUrlBackup"),
+            at_handles=collect_handles(item, caption),
+            tagged_location=location_name(item),
+            hashtags=normalize_hashtags(item.get("hashtags"), caption),
         )
 
 
-def _first(item: dict, *keys: str) -> str | None:
-    """First non-empty value among the given keys (actors vary in naming)."""
-    for k in keys:
-        v = item.get(k)
-        if v:
-            return v
-    return None
-
-
-def _location(item: dict) -> str | None:
-    loc = item.get("locationName")
-    if loc:
-        return loc
-    nested = item.get("location")
-    if isinstance(nested, dict):
-        return nested.get("name")
-    return None
-
-
-def _collect_handles(item: dict, caption: str | None) -> list[str]:
-    handles = list(parse_handles(caption))
-    for source in (item.get("mentions") or []):
-        h = source.lstrip("@") if isinstance(source, str) else None
-        if h and h not in handles:
-            handles.append(h)
-    for tag in item.get("taggedUsers") or []:
-        username = tag.get("username") if isinstance(tag, dict) else None
-        if username and username not in handles:
-            handles.append(username)
-    return handles
-
-
 class StubFetcher:
-    """Deterministic sample for local testing (no network)."""
+    """Deterministic sample for local testing (no network, any platform)."""
 
     SAMPLE = ReelData(
-        canonical_id="STUB_NYC_CAFES",
+        canonical_id="ig:STUB_NYC_CAFES",
         url="https://www.instagram.com/reel/STUB_NYC_CAFES/",
+        platform="instagram",
         caption=(
             "Top 5 cafes in NYC you NEED to try ☕️\n"
             "1. @devocion in Williamsburg — get the cold brew\n"
@@ -95,7 +64,6 @@ class StubFetcher:
             "#nyccoffee #williamsburg #nyceats"
         ),
         author_handle="miotravel_",
-        thumbnail_url=None,
         video_url=None,  # no video in the stub; extraction runs caption-only
         at_handles=["devocion", "variety_coffee"],
         tagged_location="New York, New York",

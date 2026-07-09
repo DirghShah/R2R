@@ -10,7 +10,7 @@ from app.config import settings
 from app.db import get_db
 from app.models import ReelSource, User, UserPlace
 from app.schemas import ReelStatusResponse, SubmitReelRequest
-from worker.fetchers.base import canonical_id
+from worker.fetchers.base import parse_source
 from worker.queue import enqueue_analyze
 
 router = APIRouter(tags=["reels"])
@@ -23,7 +23,7 @@ def submit_reel(
     db: Session = Depends(get_db),
 ) -> ReelStatusResponse:
     try:
-        cid = canonical_id(body.url)
+        platform, cid = parse_source(body.url)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -33,7 +33,7 @@ def submit_reel(
 
     reel = db.scalar(select(ReelSource).where(ReelSource.canonical_id == cid))
     if reel is None:
-        reel = ReelSource(url=body.url, canonical_id=cid, status="pending")
+        reel = ReelSource(url=body.url, canonical_id=cid, platform=platform, status="pending")
         db.add(reel)
         db.commit()
         db.refresh(reel)

@@ -2,157 +2,140 @@ import SharedKit
 import SwiftData
 import SwiftUI
 
-/// Fine-dining intake screen: a calm, tasteful, wordless composition. Paste a
-/// reel link, tap to analyze. Same backend pipeline as everywhere else.
+/// Paste a link from Instagram, TikTok, or YouTube Shorts and analyze it — the
+/// same backend pipeline as the native share sheet. Consistent material theme.
 struct AddReelScreen: View {
     @Environment(\.modelContext) private var context
     @FocusState private var focused: Bool
     @State private var url = ""
     @State private var phase: Phase = .idle
 
-    enum Phase: Equatable { case idle, working, done(Int), failed }
-
-    // Palette — deep charcoal-green plate with champagne gold.
-    private static let plate = Color(red: 0.07, green: 0.09, blue: 0.08)
-    private static let plateDeep = Color(red: 0.10, green: 0.15, blue: 0.13)
-    private static let gold = Color(red: 0.83, green: 0.69, blue: 0.42)
-    private static let cream = Color(red: 0.93, green: 0.91, blue: 0.86)
+    enum Phase: Equatable {
+        case idle, working(String), done(Int), failed(String)
+    }
 
     var body: some View {
-        ZStack {
-            background
-            VStack(spacing: 34) {
-                Spacer()
-                emblem
-                field
-                analyzeButton
-                status
-                Spacer()
-                Spacer()
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    hero
+                    inputCard
+                    analyzeButton
+                    statusView
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { focused = false }
             }
-            .padding(.horizontal, 36)
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button { focused = false } label: { Image(systemName: "checkmark") }
-                    .tint(Self.gold)
+            .scrollDismissesKeyboard(.immediately)
+            .navigationTitle("Add a place")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focused = false }
+                }
             }
         }
     }
 
-    // MARK: Background
-
-    private var background: some View {
-        ZStack {
-            LinearGradient(colors: [Self.plate, Self.plateDeep],
-                           startPoint: .top, endPoint: .bottom)
-            RadialGradient(colors: [Self.gold.opacity(0.10), .clear],
-                           center: .top, startRadius: 0, endRadius: 360)
+    private var hero: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "mappin.and.ellipse")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(.tint)
+            Text("Paste a link, get a pin").font(.title2.bold())
+            Text("From Instagram, TikTok, or YouTube Shorts — we pull out every place and drop it on your map.")
+                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            platformRow
         }
-        .ignoresSafeArea()
-        .contentShape(Rectangle())
-        .onTapGesture { focused = false }
+        .padding(.top, 8)
     }
 
-    // MARK: Emblem (culinary, replaces the reel icon)
-
-    private var emblem: some View {
-        ZStack {
-            Circle().stroke(Self.gold.opacity(0.35), lineWidth: 1).frame(width: 116, height: 116)
-            Circle().stroke(Self.gold.opacity(0.7), lineWidth: 1.5).frame(width: 92, height: 92)
-            Image(systemName: "fork.knife")
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(Self.gold)
+    private var platformRow: some View {
+        HStack(spacing: 18) {
+            Label("Instagram", systemImage: "camera.fill")
+            Label("TikTok", systemImage: "music.note")
+            Label("Shorts", systemImage: "play.rectangle.fill")
         }
+        .labelStyle(.iconOnly)
+        .font(.title3)
+        .foregroundStyle(.secondary)
+        .padding(.top, 2)
     }
 
-    // MARK: Input
-
-    private var field: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "link").font(.callout).foregroundStyle(Self.cream.opacity(0.45))
-            TextField("", text: $url, prompt:
-                        Text(verbatim: "instagram.com/reel/…")
-                            .foregroundColor(Self.cream.opacity(0.35)))
-                .foregroundStyle(Self.cream)
-                .tint(Self.gold)
+    private var inputCard: some View {
+        VStack(spacing: 12) {
+            TextField("Paste a reel or video link", text: $url)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
                 .submitLabel(.go)
                 .focused($focused)
                 .onSubmit { focused = false; Task { await submit() } }
+            Divider()
             Button {
                 if let s = UIPasteboard.general.string { url = s }
                 focused = false
             } label: {
-                Image(systemName: "doc.on.clipboard").font(.callout).foregroundStyle(Self.gold)
+                Label("Paste from clipboard", systemImage: "doc.on.clipboard")
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.plain)
         }
-        .padding(.vertical, 16).padding(.horizontal, 20)
-        .background(Color.white.opacity(0.04), in: Capsule())
-        .overlay(Capsule().strokeBorder(Self.gold.opacity(0.30), lineWidth: 1))
+        .padding(16)
+        .card(20)
     }
-
-    // MARK: Action (icon-only)
 
     private var analyzeButton: some View {
         Button { focused = false; Task { await submit() } } label: {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [Self.gold, Color(red: 0.72, green: 0.57, blue: 0.30)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 66, height: 66)
-                    .shadow(color: Self.gold.opacity(0.35), radius: 12, y: 4)
-                if phase == .working {
-                    ProgressView().tint(Self.plate)
-                } else {
-                    Image(systemName: "arrow.right")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(Self.plate)
-                }
+            HStack {
+                if isWorking { ProgressView().tint(.white); Spacer().frame(width: 8) }
+                Text("Analyze").font(.headline)
             }
+            .frame(maxWidth: .infinity).padding(.vertical, 6)
         }
-        .buttonStyle(.plain)
-        .disabled(url.isEmpty || phase == .working)
-        .opacity(url.isEmpty ? 0.45 : 1)
-        .animation(.easeInOut, value: url.isEmpty)
+        .buttonStyle(.borderedProminent)
+        .disabled(url.isEmpty || isWorking)
     }
 
-    // MARK: Status (wordless)
-
-    @ViewBuilder private var status: some View {
+    @ViewBuilder private var statusView: some View {
         switch phase {
-        case .idle, .working:
-            Color.clear.frame(height: 28)
+        case .idle:
+            EmptyView()
+        case .working(let msg):
+            statusCard(msg, icon: "hourglass", tint: .secondary)
         case .done(let n):
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.seal.fill").foregroundStyle(Self.gold)
-                Image(systemName: "mappin.and.ellipse").foregroundStyle(Self.cream.opacity(0.8))
-                Text("\(n)").font(.headline.monospacedDigit()).foregroundStyle(Self.cream)
-            }
-            .frame(height: 28)
-            .transition(.opacity)
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color(red: 0.85, green: 0.55, blue: 0.30))
-                .frame(height: 28)
-                .transition(.opacity)
+            statusCard("\(n) place\(n == 1 ? "" : "s") saved. Check the Map & Lists tabs.",
+                       icon: "checkmark.circle.fill", tint: .green)
+        case .failed(let msg):
+            statusCard(msg, icon: "exclamationmark.triangle.fill", tint: .orange)
         }
     }
+
+    private func statusCard(_ text: String, icon: String, tint: Color) -> some View {
+        Label(text, systemImage: icon)
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .card(16)
+    }
+
+    private var isWorking: Bool { if case .working = phase { return true } else { return false } }
 
     // MARK: Flow
 
     private func submit() async {
         let link = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !link.isEmpty else { return }
-        withAnimation { phase = .working }
+        phase = .working("Submitting…")
         do {
             let submitted = try await APIClient.shared.submitReel(url: link)
+            phase = .working("Analyzing… (~15–60s)")
             try await poll(submitted.reelID)
         } catch {
-            withAnimation { phase = .failed }
+            phase = .failed(error.localizedDescription)
         }
     }
 
@@ -160,16 +143,17 @@ struct AddReelScreen: View {
         for _ in 0..<40 {
             try await Task.sleep(for: .seconds(2))
             let s = try await APIClient.shared.reelStatus(reelID)
-            if s.status == "done" {
-                url = ""
+            switch s.status {
+            case "done":
+                phase = .done(s.placeCount); url = ""
                 await Syncer.refresh(context)
-                withAnimation { phase = .done(s.placeCount) }
                 return
-            } else if s.status == "failed" {
-                withAnimation { phase = .failed }
-                return
+            case "failed":
+                phase = .failed("Couldn't analyze that link. Try another."); return
+            default:
+                phase = .working("Analyzing… (\(s.status))")
             }
         }
-        withAnimation { phase = .done(0) }
+        phase = .working("Still working — check the Map shortly.")
     }
 }
