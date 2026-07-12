@@ -9,13 +9,15 @@ struct MapScreen: View {
     @State private var selected: CachedPlace?
     @State private var filter: MapFilter = .all
     @State private var detail: CachedPlace?
+    // .automatic frames the visible pins; the user regains control by panning.
+    @State private var camera: MapCameraPosition = .automatic
 
     private var pins: [CachedPlace] {
         allPlaces.filter { $0.coordinate != nil && filter.matches($0.categoryEnum) }
     }
 
     var body: some View {
-        Map {
+        Map(position: $camera) {
             ForEach(pins) { place in
                 if let coord = place.coordinate {
                     Annotation(place.name, coordinate: coord) {
@@ -41,7 +43,11 @@ struct MapScreen: View {
                 ForEach(MapFilter.allCases) { f in
                     let on = filter == f
                     Button {
-                        withAnimation(.snappy) { filter = f; selected = nil }
+                        withAnimation(.snappy) {
+                            filter = f
+                            selected = nil
+                            camera = .automatic   // re-frame to the filtered pins
+                        }
                     } label: {
                         Label(f.label, systemImage: f.icon)
                             .font(.subheadline.weight(.semibold))

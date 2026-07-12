@@ -3,12 +3,18 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Receives an Instagram reel share, extracts the URL, and submits it to the
-/// backend. Stays intentionally tiny — all heavy work is server-side.
+/// Receives a share from Instagram / TikTok / YouTube, extracts the link, and
+/// submits it to the backend. Deliberately tiny: all heavy work is server-side,
+/// and extensions are memory-limited. If the network call fails, the link is
+/// queued in the App Group and the main app submits it on next launch.
 final class ShareViewController: UIViewController {
+    private let state = ShareState()
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        let hosting = UIHostingController(rootView: ShareConfirmView())
+        view.backgroundColor = .clear
+        let hosting = UIHostingController(rootView: ShareConfirmView(state: state))
+        hosting.view.backgroundColor = .clear
         addChild(hosting)
         hosting.view.frame = view.bounds
         hosting.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -19,73 +25,84 @@ final class ShareViewController: UIViewController {
     }
 
     private func handleShare() async {
-        guard let url = await extractURL() else { return finish(success: false) }
-        do {
-            _ = try await APIClient.shared.submitReel(url: url.absoluteString)
-            finish(success: true)
-        } catch {
-            // Offline / failure: queue locally for the app to retry on next launch.
-            PendingQueue.enqueue(url.absoluteString)
-            finish(success: true)
+        guard let raw = await extractSharedText(),
+              let link = LinkValidator.firstSupportedLink(in: raw) else {
+            state.phase = .unsupported
+            return finish(after: 1.4)
         }
+        do {
+            _ = try await APIClient.shared.submitReel(url: link)
+            state.phase = .saved
+        } catch {
+            // Offline or backend unreachable — hand off to the main app.
+            PendingQueue.enqueue(link)
+            state.phase = .queued
+        }
+        finish(after: 1.0)
     }
 
-    private func extractURL() async -> URL? {
+    /// Shared payloads arrive as URL or plain-text items depending on the app.
+    private func extractSharedText() async -> String? {
         guard let items = extensionContext?.inputItems as? [NSExtensionItem] else { return nil }
         for item in items {
             for provider in item.attachments ?? [] {
                 if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
-                   let u = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL {
-                    return u
+                   let loaded = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier),
+                   let url = loaded as? URL {
+                    return url.absoluteString
                 }
                 if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-                   let s = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) as? String,
-                   let u = firstURL(in: s) {
-                    return u
+                   let loaded = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier),
+                   let s = loaded as? String {
+                    return s
                 }
             }
         }
         return nil
     }
 
-    private func firstURL(in text: String) -> URL? {
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        let range = NSRange(text.startIndex..., in: text)
-        return detector?.firstMatch(in: text, range: range)?.url
-    }
-
-    private func finish(success: Bool) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + (success ? 0.8 : 0.2)) {
-            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+    private func finish(after seconds: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
         }
     }
+}
+
+// MARK: - UI
+
+@MainActor
+final class ShareState: ObservableObject {
+    enum Phase { case working, saved, queued, unsupported }
+    @Published var phase: Phase = .working
 }
 
 private struct ShareConfirmView: View {
+    @ObservedObject var state: ShareState
+
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "mappin.and.ellipse").font(.largeTitle)
-            Text("Saving to ReelMap…").font(.headline)
-            ProgressView()
+            switch state.phase {
+            case .working:
+                ProgressView()
+                Text("Saving to ReelMap…").font(.headline)
+            case .saved:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.largeTitle).foregroundStyle(.green)
+                Text("Analyzing — pins coming up").font(.headline)
+            case .queued:
+                Image(systemName: "tray.and.arrow.down.fill")
+                    .font(.largeTitle).foregroundStyle(.secondary)
+                Text("Saved — will analyze when you open ReelMap").font(.headline)
+            case .unsupported:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.largeTitle).foregroundStyle(.orange)
+                Text("Share an Instagram, TikTok, or YouTube link").font(.headline)
+            }
         }
+        .multilineTextAlignment(.center)
+        .padding(28)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(40)
-    }
-}
-
-/// Local fallback queue (App Group) for shares submitted while offline.
-enum PendingQueue {
-    private static let key = "pending_reels"
-    private static var defaults: UserDefaults? { UserDefaults(suiteName: AuthStore.appGroup) }
-
-    static func enqueue(_ url: String) {
-        var list = defaults?.stringArray(forKey: key) ?? []
-        list.append(url)
-        defaults?.set(list, forKey: key)
-    }
-
-    static func drain() -> [String] {
-        let list = defaults?.stringArray(forKey: key) ?? []
-        defaults?.removeObject(forKey: key)
-        return list
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

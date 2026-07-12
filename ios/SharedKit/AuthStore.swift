@@ -8,11 +8,10 @@ public enum AuthStore {
     private static let service = "com.yourco.reelmap.auth"
     private static let account = "jwt"
 
-    /// App Groups require the paid Apple Developer Program. Leave this `false` for
-    /// the free-account build (the app keeps its token in its own Keychain). Flip
-    /// to `true` only when you enable the Share Extension + App Group, so the
-    /// extension and app share one session.
-    public static let useSharedAccessGroup = false
+    /// Paid Developer Program: the App Group entitlement is on both the app and
+    /// the Share Extension, so the session token lives in the shared Keychain
+    /// group and the extension authenticates as the same user.
+    public static let useSharedAccessGroup = true
 
     public static var token: String? {
         get { read() }

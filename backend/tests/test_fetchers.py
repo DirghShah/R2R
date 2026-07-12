@@ -54,3 +54,25 @@ def test_stub_fetcher_shape():
     assert data.canonical_id == "ig:STUB_NYC_CAFES"
     assert data.platform == "instagram"
     assert "devocion" in data.at_handles
+
+
+def test_geocode_name_verification():
+    from worker import geocode
+
+    class P:
+        name = "Devoción"
+        instagram_handle = "devocion"
+        city = "New York"
+        neighborhood = None
+
+    p = P()
+    assert geocode._result_names_venue(p, "Devocion, 69 Grand St, Brooklyn, New York")
+    # City-centroid style result must be rejected (wrong-pin protection)
+    assert not geocode._result_names_venue(p, "New York, United States")
+
+
+def test_extraction_schema_has_country_fields():
+    from worker.extract import ExtractedPlace, ReelExtraction
+
+    assert "country" in ExtractedPlace.model_fields
+    assert "primary_country" in ReelExtraction.model_fields

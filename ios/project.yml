@@ -1,13 +1,10 @@
 # XcodeGen spec — run `xcodegen generate` to produce ReelMap.xcodeproj.
 #
-# DEFAULT = free-account build: runs in the Simulator and on your own iPhone with
-# a free Apple ID. No App Group / Sign in with Apple / Push (those need the paid
-# $99/yr Developer Program). You log in with the DEBUG dev button and add reels by
-# pasting the link.
-#
-# TO ENABLE THE NATIVE INSTAGRAM SHARE (paid account): see ios/README.md →
-# "Enabling the Share Extension" — uncomment the ShareExtension target + the app's
-# entitlements/embed below.
+# Paid-account build: includes the Share Extension (Instagram/TikTok/YouTube →
+# Share → ReelMap) and the shared App Group. One-time setup in Xcode: with
+# automatic signing, open Signing & Capabilities for BOTH the ReelMap and
+# ShareExtension targets and confirm the App Group `group.com.yourco.reelmap`
+# is checked (Xcode registers it with your developer account the first time).
 name: ReelMap
 options:
   bundleIdPrefix: com.yourco.reelmap
@@ -29,9 +26,15 @@ targets:
     sources: [ReelMap]
     dependencies:
       - target: SharedKit
+      - target: ShareExtension
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap
+    entitlements:
+      path: ReelMap/ReelMap.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.yourco.reelmap]
     info:
       path: ReelMap/Info.plist
       properties:
@@ -42,6 +45,35 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
 
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources: [ShareExtension]
+    dependencies:
+      - target: SharedKit
+        embed: false   # uses the framework embedded in the host app
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.share
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.yourco.reelmap]
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: ReelMap
+        API_BASE_URL: $(API_BASE_URL)
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+
   SharedKit:
     type: framework
     platform: iOS
@@ -50,31 +82,3 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.SharedKit
         GENERATE_INFOPLIST_FILE: YES
-
-  # ---- Paid-account only: native Instagram share sheet ----
-  # Uncomment this target AND the app's `entitlements` + `embed` dependency
-  # (see ios/README.md) once you have the Apple Developer Program + an App Group.
-  #
-  # ShareExtension:
-  #   type: app-extension
-  #   platform: iOS
-  #   sources: [ShareExtension]
-  #   dependencies:
-  #     - target: SharedKit
-  #   settings:
-  #     base:
-  #       PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.share
-  #   entitlements:
-  #     path: ShareExtension/ShareExtension.entitlements
-  #     properties:
-  #       com.apple.security.application-groups: [group.com.yourco.reelmap]
-  #   info:
-  #     path: ShareExtension/Info.plist
-  #     properties:
-  #       NSExtension:
-  #         NSExtensionPointIdentifier: com.apple.share-services
-  #         NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
-  #         NSExtensionAttributes:
-  #           NSExtensionActivationRule:
-  #             NSExtensionActivationSupportsWebURLWithMaxCount: 1
-  #             NSExtensionActivationSupportsText: true

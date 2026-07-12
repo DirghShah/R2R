@@ -24,9 +24,13 @@ CATEGORIES = "cafe | restaurant | hotel | bar | club | sight | event | other"
 
 
 class ExtractedPlace(BaseModel):
-    name: str = Field(description="Full proper name of the place")
+    name: str = Field(
+        description="Exact proper name of the venue, correctly spelled and capitalized. "
+                    "Prefer the spelling from the @handle or official on-screen text; never abbreviate."
+    )
     category: str = Field(description=CATEGORIES)
     city: str | None = Field(default=None, description="City, inferred from all signals")
+    country: str | None = Field(default=None, description="Country, inferred from all signals")
     neighborhood: str | None = Field(default=None, description="Neighborhood/district e.g. 'Bishop Arts'")
     instagram_handle: str | None = Field(
         default=None,
@@ -70,6 +74,10 @@ class ReelExtraction(BaseModel):
     primary_city: str | None = Field(
         default=None,
         description="Main city this reel is about.",
+    )
+    primary_country: str | None = Field(
+        default=None,
+        description="Country of the main city.",
     )
 
 

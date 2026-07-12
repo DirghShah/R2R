@@ -23,7 +23,8 @@ struct ReelMapApp: App {
 }
 
 /// No sign-in screen for now: acquire a session silently on launch so the user
-/// lands straight on the map. (Swap `dev:me` for real Sign in with Apple later.)
+/// lands straight on the map, then submit any links the Share Extension queued
+/// while offline. (Swap `dev:me` for real Sign in with Apple before App Store release.)
 @MainActor
 final class AppState: ObservableObject {
     @Published var ready = false
@@ -33,6 +34,11 @@ final class AppState: ObservableObject {
             _ = try? await APIClient.shared.signInWithApple(identityToken: "dev:me")
         }
         ready = true
+
+        // Links shared while the backend was unreachable — submit them now.
+        for url in PendingQueue.drain() {
+            _ = try? await APIClient.shared.submitReel(url: url)
+        }
     }
 }
 

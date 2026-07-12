@@ -109,10 +109,19 @@ public actor APIClient {
             #endif
         }
         guard (200..<300).contains(http.statusCode) else {
-            let msg = String(data: data, encoding: .utf8) ?? "Request failed"
-            throw APIError(status: http.statusCode, message: msg)
+            throw APIError(status: http.statusCode, message: Self.friendlyMessage(from: data))
         }
         return data
+    }
+
+    /// FastAPI errors arrive as {"detail": "..."} — surface just the detail,
+    /// never raw JSON, in user-facing alerts.
+    private static func friendlyMessage(from data: Data) -> String {
+        struct Envelope: Decodable { let detail: String }
+        if let env = try? JSONDecoder().decode(Envelope.self, from: data) {
+            return env.detail
+        }
+        return "Something went wrong. Please try again."
     }
 }
 

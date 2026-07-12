@@ -126,7 +126,19 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
 
     saved = 0
     for ep in result.extraction.places:
-        geo = geocode.geocode(ep)
+        # Inherit the reel-level city/country when a place doesn't name its own —
+        # a "9 cafes in Dallas" reel rarely repeats the city per item.
+        ep.city = ep.city or result.extraction.primary_city
+        ep.country = ep.country or result.extraction.primary_country
+
+        # One flaky geocoding call must never fail the whole reel: fall back to
+        # an un-pinned place (still listed) and keep going.
+        try:
+            geo = geocode.geocode(ep)
+        except Exception:  # noqa: BLE001
+            log.warning("geocode raised for %r — saving without a pin", ep.name, exc_info=True)
+            geo = geocode.GeocodeResult(name=ep.name, city=ep.city, country=ep.country)
+
         place = _upsert_place(db, ep, geo)
         _upsert_user_place(db, user_id, place, reel, ep)
         _bucket_collection(db, user_id, place)
@@ -135,7 +147,7 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
 
 
 def _upsert_place(db, ep, geo) -> Place:
-    city = _get_or_create_city(db, geo.city or ep.city, geo.country)
+    city = _get_or_create_city(db, geo.city or ep.city, geo.country or ep.country)
     place = None
     if geo.external_place_id:
         place = db.scalar(select(Place).where(Place.external_place_id == geo.external_place_id))

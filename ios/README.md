@@ -58,18 +58,35 @@ No login UI for now: on launch the app silently calls the backend's `dev:` auth
 
 | Target | Role |
 |---|---|
-| `SharedKit` | `Models`, async `APIClient`, `AuthStore` (Keychain) |
+| `SharedKit` | `Models`, async `APIClient`, `AuthStore` (shared Keychain), `LinkValidator`, `PendingQueue` |
 | `ReelMap` | app: `MapScreen`, `CityListsScreen`, `PlaceDetailScreen`, `AddReelScreen`; `Persistence` (SwiftData cache) |
-| `ShareExtension` | (paid only) native Instagram share intake — disabled by default |
+| `ShareExtension` | native share intake: Instagram/TikTok/YouTube → Share → **ReelMap** |
 
-## Enabling the Share Extension (paid Apple Developer Program)
+## Share Extension — one-time setup (paid Developer Program)
 
-When you have the $99/yr program and an App Group:
-1. In `project.yml`, uncomment the `ShareExtension` target, and add back to the
-   `ReelMap` target: the `entitlements` block (App Group + `applesignin` +
-   `aps-environment`) and an `embed: true` dependency on `ShareExtension`.
-2. Create the App Group `group.com.yourco.reelmap` in the Apple Developer portal
-   and enable it on both targets.
-3. Set `AuthStore.useSharedAccessGroup = true` so the extension and app share one
-   session.
-4. `xcodegen generate` again. Now Instagram → Share → ReelMap works natively.
+The extension is **enabled** in `project.yml`. After `xcodegen generate`:
+1. In Xcode, open **Signing & Capabilities** for BOTH `ReelMap` and
+   `ShareExtension` and confirm the App Group `group.com.yourco.reelmap` is
+   checked (with automatic signing, Xcode registers it with your account the
+   first time — you may need to tap **+** → App Groups → add that ID once).
+2. Build & run the app on your iPhone once (this installs the extension and
+   mints the shared session).
+3. In Instagram/TikTok/YouTube: **Share → ReelMap**. First time it may live
+   under "More" — tap Edit to move it up.
+
+If the backend is unreachable at share time, the link is queued in the App
+Group and submitted automatically the next time the app opens.
+
+## Release checklist (before App Store)
+
+- [ ] Deploy the backend behind **HTTPS** (Fly.io/Railway/Render + managed
+      Postgres/Redis) and set `API_BASE_URL` to that domain.
+- [ ] Remove `NSAllowsArbitraryLoads` from both Info.plist blocks in
+      `project.yml` (only needed for plain-HTTP LAN dev).
+- [ ] Replace the silent `dev:me` session with **Sign in with Apple**
+      (`AppState.start()`), and set `ENVIRONMENT=prod` on the backend so `dev:`
+      tokens are rejected.
+- [ ] App icon + accent-matched launch screen; App Store screenshots/metadata.
+- [ ] Privacy policy URL (App Store requirement — the app sends shared links to
+      your server for analysis).
+- [ ] Optional: APNs "pins are ready" push (backend hook already exists).
