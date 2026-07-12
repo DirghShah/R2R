@@ -37,6 +37,18 @@ open ReelMap.xcodeproj
 > stops launching. `NSAllowsArbitraryLoads` is enabled for dev so the device can
 > reach your Mac over plain HTTP; remove it before shipping.
 
+### Pasting links into the Add tab
+The Add-tab field has a **Paste button** (and a ✕ clear button) — tap it to fill
+the field from the clipboard. Prefer it over Cmd+V / long-press, which depend on
+the OS edit menu.
+
+If **Cmd+V does nothing and right-click shows only Autofill (no "Paste")**, the
+*device* pasteboard is empty — iOS only offers Paste when the clipboard has
+content. In the **Simulator**, host-clipboard sync must be on: menu bar → **Edit
+→ Automatically Sync Pasteboard** (checked), or copy on your Mac then **Edit →
+Send Pasteboard**. Once the clipboard actually has content, the Paste button and
+Cmd+V both work.
+
 ## Auth (current)
 No login UI for now: on launch the app silently calls the backend's `dev:` auth
 (works when `ENVIRONMENT=dev`) and stores the token. Replace `AppState.start()`'s
