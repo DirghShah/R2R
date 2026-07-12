@@ -2,8 +2,8 @@ import SharedKit
 import SwiftData
 import SwiftUI
 
-/// Paste a link from Instagram, TikTok, or YouTube Shorts and analyze it — the
-/// same backend pipeline as the native share sheet. Consistent material theme.
+/// Paste a link from Instagram, TikTok, or YouTube Shorts and analyze it.
+/// Tap anywhere outside the field to dismiss the keyboard, then Analyze.
 struct AddReelScreen: View {
     @Environment(\.modelContext) private var context
     @FocusState private var focused: Bool
@@ -16,26 +16,26 @@ struct AddReelScreen: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ZStack(alignment: .top) {
+                // Dismiss the keyboard on a tap in the empty area. The gesture
+                // lives ONLY on this background layer, so it never competes with
+                // the text field (that competition caused the input lag + broke
+                // paste). Empty space in the VStack falls through to here.
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { focused = false }
+
                 VStack(spacing: 22) {
                     hero
-                    inputCard
+                    inputField
                     analyzeButton
                     statusView
+                    Spacer(minLength: 0)
                 }
                 .padding(20)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .onTapGesture { focused = false }
             }
-            .scrollDismissesKeyboard(.immediately)
             .navigationTitle("Add a place")
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focused = false }
-                }
-            }
         }
     }
 
@@ -47,45 +47,20 @@ struct AddReelScreen: View {
             Text("Paste a link, get a pin").font(.title2.bold())
             Text("From Instagram, TikTok, or YouTube Shorts — we pull out every place and drop it on your map.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            platformRow
         }
         .padding(.top, 8)
     }
 
-    private var platformRow: some View {
-        HStack(spacing: 18) {
-            Label("Instagram", systemImage: "camera.fill")
-            Label("TikTok", systemImage: "music.note")
-            Label("Shorts", systemImage: "play.rectangle.fill")
-        }
-        .labelStyle(.iconOnly)
-        .font(.title3)
-        .foregroundStyle(.secondary)
-        .padding(.top, 2)
-    }
-
-    private var inputCard: some View {
-        VStack(spacing: 12) {
-            TextField("Paste a reel or video link", text: $url)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .submitLabel(.go)
-                .focused($focused)
-                .onSubmit { focused = false; Task { await submit() } }
-            Divider()
-            Button {
-                if let s = UIPasteboard.general.string { url = s }
-                focused = false
-            } label: {
-                Label("Paste from clipboard", systemImage: "doc.on.clipboard")
-                    .font(.subheadline.weight(.medium))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(16)
-        .card(20)
+    private var inputField: some View {
+        TextField("Paste a reel or video link", text: $url)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.URL)
+            .submitLabel(.go)
+            .focused($focused)
+            .onSubmit { focused = false; Task { await submit() } }
+            .padding(16)
+            .card(20)
     }
 
     private var analyzeButton: some View {
@@ -146,7 +121,7 @@ struct AddReelScreen: View {
             switch s.status {
             case "done":
                 phase = .done(s.placeCount); url = ""
-                await Syncer.refresh(context)
+                await Syncer.refresh(context, force: true)
                 return
             case "failed":
                 phase = .failed("Couldn't analyze that link. Try another."); return

@@ -91,9 +91,21 @@ final class CachedList {
 
 /// Pulls from the API and replaces the local cache. On network failure it leaves
 /// the existing cache intact (that's the offline path).
+///
+/// Throttled + single-flight so switching between the Map and Lists tabs doesn't
+/// re-fetch and rewrite SwiftData on every appearance (that thrash caused jank).
+/// Pass `force: true` for pull-to-refresh and right after analyzing a reel.
 @MainActor
 enum Syncer {
-    static func refresh(_ context: ModelContext) async {
+    private static var lastRefresh: Date?
+    private static var isRefreshing = false
+
+    static func refresh(_ context: ModelContext, force: Bool = false) async {
+        if isRefreshing { return }
+        if !force, let last = lastRefresh, Date().timeIntervalSince(last) < 20 { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         guard let places = try? await APIClient.shared.places() else { return }
         let lists = (try? await APIClient.shared.lists()) ?? []
 
@@ -102,9 +114,11 @@ enum Syncer {
         for p in places { context.insert(CachedPlace(dto: p)) }
         for l in lists { context.insert(CachedList(dto: l)) }
         try? context.save()
+        lastRefresh = Date()
     }
 
     static func clear(_ context: ModelContext) {
+        lastRefresh = nil
         try? context.delete(model: CachedPlace.self)
         try? context.delete(model: CachedList.self)
         try? context.save()

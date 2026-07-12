@@ -31,7 +31,7 @@ struct MapScreen: View {
         .safeAreaInset(edge: .top) { filterBar }
         .overlay(alignment: .bottom) { bottomLayer }
         .task { await Syncer.refresh(context) }
-        .refreshable { await Syncer.refresh(context) }
+        .refreshable { await Syncer.refresh(context, force: true) }
         .sheet(item: $detail) { PlaceDetailScreen(place: $0) }
     }
 

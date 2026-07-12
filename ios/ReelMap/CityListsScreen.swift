@@ -30,7 +30,7 @@ struct CityListsScreen: View {
             }
             .overlay { if lists.isEmpty { empty } }
             .task { await Syncer.refresh(context) }
-            .refreshable { await Syncer.refresh(context) }
+            .refreshable { await Syncer.refresh(context, force: true) }
         }
     }
 
