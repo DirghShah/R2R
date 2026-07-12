@@ -52,15 +52,41 @@ struct AddReelScreen: View {
     }
 
     private var inputField: some View {
-        TextField("Paste a reel or video link", text: $url)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .keyboardType(.URL)
-            .submitLabel(.go)
-            .focused($focused)
-            .onSubmit { focused = false; Task { await submit() } }
-            .padding(16)
-            .card(20)
+        HStack(spacing: 10) {
+            TextField("Paste a reel or video link", text: $url)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .submitLabel(.go)
+                .focused($focused)
+                .onSubmit { focused = false; Task { await submit() } }
+
+            if url.isEmpty {
+                // Native paste control: reads the clipboard only on tap (no
+                // privacy banner, no long-press edit menu needed). Makes repeat
+                // testing of pasted links reliable.
+                PasteButton(payloadType: String.self) { strings in
+                    if let s = strings.first(where: { !$0.isEmpty }) {
+                        url = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                        focused = false
+                    }
+                }
+                .labelStyle(.iconOnly)
+                .buttonBorderShape(.capsule)
+                .tint(.accentColor)
+            } else {
+                Button {
+                    url = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear")
+            }
+        }
+        .padding(16)
+        .card(20)
     }
 
     private var analyzeButton: some View {
