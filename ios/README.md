@@ -38,16 +38,15 @@ open ReelMap.xcodeproj
 > reach your Mac over plain HTTP; remove it before shipping.
 
 ### Pasting links into the Add tab
-The Add-tab field has a **Paste button** (and a ✕ clear button) — tap it to fill
-the field from the clipboard. Prefer it over Cmd+V / long-press, which depend on
-the OS edit menu.
+The Add-tab field has a **Paste** button (✕ clears). It reads **both URL and
+string** pasteboard payloads — important because Instagram's "Copy link" often
+puts a *URL object* on the clipboard, which string-only readers (including a
+`String`-typed `PasteButton`) silently miss.
 
-If **Cmd+V does nothing and right-click shows only Autofill (no "Paste")**, the
-*device* pasteboard is empty — iOS only offers Paste when the clipboard has
-content. In the **Simulator**, host-clipboard sync must be on: menu bar → **Edit
-→ Automatically Sync Pasteboard** (checked), or copy on your Mac then **Edit →
-Send Pasteboard**. Once the clipboard actually has content, the Paste button and
-Cmd+V both work.
+Still not pasting on a real device? Check **Settings → ReelMap → Paste from
+Other Apps** and set it to **Allow** — if the iOS paste-permission prompt was
+ever declined, all pastes fail silently. In the **Simulator**, host-clipboard
+sync must be on: menu bar → **Edit → Automatically Sync Pasteboard**.
 
 ## Auth (current)
 No login UI for now: on launch the app silently calls the backend's `dev:` auth

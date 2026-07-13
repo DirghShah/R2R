@@ -4,7 +4,14 @@ import SwiftUI
 
 @main
 struct ReelMapApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
+    @StateObject private var inbox = ShareInbox()
+
+    private let container: ModelContainer = {
+        // Fail-fast on schema errors; models are simple value stores.
+        try! ModelContainer(for: CachedPlace.self, CachedList.self)
+    }()
 
     var body: some Scene {
         WindowGroup {
@@ -16,15 +23,28 @@ struct ReelMapApp: App {
                 }
             }
             .tint(.appAccent)
-            .task { await app.start() }
+            .environmentObject(inbox)
+            .task {
+                await app.start()
+                inbox.activate(container.mainContext)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                // Returning from Instagram after a share lands here: pick up
+                // the in-flight reel, show the analyzing banner, sync pins.
+                if phase == .active, app.ready {
+                    inbox.activate(container.mainContext)
+                } else if phase != .active {
+                    inbox.deactivate()
+                }
+            }
         }
-        .modelContainer(for: [CachedPlace.self, CachedList.self])
+        .modelContainer(container)
     }
 }
 
 /// No sign-in screen for now: acquire a session silently on launch so the user
-/// lands straight on the map, then submit any links the Share Extension queued
-/// while offline. (Swap `dev:me` for real Sign in with Apple before App Store release.)
+/// lands straight on the map. (Swap `dev:me` for real Sign in with Apple before
+/// App Store release — see the README checklist.)
 @MainActor
 final class AppState: ObservableObject {
     @Published var ready = false
@@ -34,11 +54,6 @@ final class AppState: ObservableObject {
             _ = try? await APIClient.shared.signInWithApple(identityToken: "dev:me")
         }
         ready = true
-
-        // Links shared while the backend was unreachable — submit them now.
-        for url in PendingQueue.drain() {
-            _ = try? await APIClient.shared.submitReel(url: url)
-        }
     }
 }
 

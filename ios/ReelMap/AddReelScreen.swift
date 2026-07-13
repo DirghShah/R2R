@@ -59,21 +59,49 @@ struct AddReelScreen: View {
 
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("Type or paste a link", text: $text)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .submitLabel(.done)
-                .focused($focused)
-                .onSubmit { focused = false }
-                .onChange(of: text) { fieldError = nil }
-                .padding(16)
-                .background(.regularMaterial,
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(fieldError == nil ? Color.primary.opacity(0.06) : .red,
-                                      lineWidth: fieldError == nil ? 1 : 1.5))
+            HStack(spacing: 10) {
+                TextField("Type or paste a link", text: $text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .submitLabel(.done)
+                    .focused($focused)
+                    .onSubmit { focused = false }
+                    .onChange(of: text) { fieldError = nil }
+
+                if trimmed.isEmpty {
+                    // Instagram's "Copy link" often lands on the pasteboard as a
+                    // URL payload, not a string — readers that only check
+                    // `.string` (or a String-typed PasteButton) silently no-op.
+                    // This reads both, so it always works.
+                    Button("Paste") {
+                        let pb = UIPasteboard.general
+                        if let value = pb.url?.absoluteString ?? pb.string {
+                            text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                        focused = false
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                } else {
+                    Button {
+                        text = ""
+                        fieldError = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear")
+                }
+            }
+            .padding(.vertical, 12).padding(.horizontal, 16)
+            .background(.regularMaterial,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(fieldError == nil ? Color.primary.opacity(0.06) : .red,
+                                  lineWidth: fieldError == nil ? 1 : 1.5))
 
             if let fieldError {
                 Label(fieldError, systemImage: "exclamationmark.circle.fill")

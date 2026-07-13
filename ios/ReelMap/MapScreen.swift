@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MapScreen: View {
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var inbox: ShareInbox
     @Query(sort: \CachedPlace.savedAt, order: .reverse) private var allPlaces: [CachedPlace]
 
     @State private var selected: CachedPlace?
@@ -30,7 +31,16 @@ struct MapScreen: View {
         }
         .mapStyle(.standard(pointsOfInterest: .excludingAll))
         .ignoresSafeArea(edges: .top)
-        .safeAreaInset(edge: .top) { filterBar }
+        .safeAreaInset(edge: .top) {
+            VStack(spacing: 8) {
+                filterBar
+                if let banner = inbox.banner {
+                    ShareBannerView(banner: banner)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: inbox.banner)
+        }
         .overlay(alignment: .bottom) { bottomLayer }
         .task { await Syncer.refresh(context) }
         .refreshable { await Syncer.refresh(context, force: true) }
@@ -138,5 +148,32 @@ private struct EmptyHint: View {
         }
         .padding(20)
         .card(24)
+    }
+}
+
+/// Status for reels that arrived via the Share Extension.
+struct ShareBannerView: View {
+    let banner: ShareInbox.Banner
+
+    var body: some View {
+        HStack(spacing: 10) {
+            switch banner {
+            case .analyzing:
+                ProgressView().controlSize(.small)
+                Text("Analyzing shared reel…").font(.subheadline.weight(.medium))
+            case .added(let n):
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Text("\(n) place\(n == 1 ? "" : "s") added to your map")
+                    .font(.subheadline.weight(.medium))
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text("Couldn't analyze the shared reel")
+                    .font(.subheadline.weight(.medium))
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
     }
 }

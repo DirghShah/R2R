@@ -31,7 +31,10 @@ final class ShareViewController: UIViewController {
             return finish(after: 1.4)
         }
         do {
-            _ = try await APIClient.shared.submitReel(url: link)
+            let submitted = try await APIClient.shared.submitReel(url: link)
+            // Record the job so the main app can show "analyzing…" and pick up
+            // the pins the moment it comes to the foreground.
+            InFlightReels.add(submitted.reelID)
             state.phase = .saved
         } catch {
             // Offline or backend unreachable — hand off to the main app.
