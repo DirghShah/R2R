@@ -17,6 +17,17 @@ class ReelStatusResponse(BaseModel):
     error: str | None = None
 
 
+class ReelActivityOut(BaseModel):
+    reel_id: str
+    status: str  # pending | processing | done | failed
+    platform: str
+    title: str | None = None
+    thumbnail_url: str | None = None
+    place_count: int = 0
+    error: str | None = None
+    created_at: datetime
+
+
 class PlaceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

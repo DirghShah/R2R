@@ -4,12 +4,13 @@ import SwiftUI
 
 struct MapScreen: View {
     @Environment(\.modelContext) private var context
-    @EnvironmentObject private var inbox: ShareInbox
+    @EnvironmentObject private var activity: ActivityStore
     @Query(sort: \CachedPlace.savedAt, order: .reverse) private var allPlaces: [CachedPlace]
 
     @State private var selected: CachedPlace?
     @State private var filter: MapFilter = .all
     @State private var detail: CachedPlace?
+    @State private var showActivity = false
     // .automatic frames the visible pins; the user regains control by panning.
     @State private var camera: MapCameraPosition = .automatic
 
@@ -33,18 +34,22 @@ struct MapScreen: View {
         .ignoresSafeArea(edges: .top)
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
-                filterBar
-                if let banner = inbox.banner {
-                    ShareBannerView(banner: banner)
+                HStack(spacing: 8) {
+                    filterBar
+                    activityButton
+                }
+                if let toast = activity.toast {
+                    ToastView(toast: toast)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .animation(.snappy, value: inbox.banner)
+            .animation(.snappy, value: activity.toast)
         }
         .overlay(alignment: .bottom) { bottomLayer }
         .task { await Syncer.refresh(context) }
         .refreshable { await Syncer.refresh(context, force: true) }
         .sheet(item: $detail) { PlaceDetailScreen(place: $0) }
+        .sheet(isPresented: $showActivity) { ActivityView() }
     }
 
     private var filterBar: some View {
@@ -72,8 +77,30 @@ struct MapScreen: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 16).padding(.vertical, 4)
+            .padding(.leading, 16).padding(.vertical, 4)
         }
+    }
+
+    private var activityButton: some View {
+        Button { showActivity = true } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(.regularMaterial))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.06)))
+                if activity.activeCount > 0 {
+                    Text("\(activity.activeCount)")
+                        .font(.caption2.bold()).foregroundStyle(.white)
+                        .padding(5)
+                        .background(Circle().fill(Color.appAccent))
+                        .offset(x: 4, y: -4)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 16)
     }
 
     @ViewBuilder private var bottomLayer: some View {
@@ -151,24 +178,20 @@ private struct EmptyHint: View {
     }
 }
 
-/// Status for reels that arrived via the Share Extension.
-struct ShareBannerView: View {
-    let banner: ShareInbox.Banner
+/// Brief success/failure toast when a queued reel finishes.
+struct ToastView: View {
+    let toast: ActivityStore.Toast
 
     var body: some View {
         HStack(spacing: 10) {
-            switch banner {
-            case .analyzing:
-                ProgressView().controlSize(.small)
-                Text("Analyzing shared reel…").font(.subheadline.weight(.medium))
+            switch toast {
             case .added(let n):
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("\(n) place\(n == 1 ? "" : "s") added to your map")
                     .font(.subheadline.weight(.medium))
             case .failed:
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("Couldn't analyze the shared reel")
-                    .font(.subheadline.weight(.medium))
+                Text("Couldn't analyze a reel").font(.subheadline.weight(.medium))
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)

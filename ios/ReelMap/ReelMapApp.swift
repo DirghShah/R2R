@@ -6,7 +6,7 @@ import SwiftUI
 struct ReelMapApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
-    @StateObject private var inbox = ShareInbox()
+    @StateObject private var activity = ActivityStore()
 
     private let container: ModelContainer = {
         // Fail-fast on schema errors; models are simple value stores.
@@ -23,18 +23,18 @@ struct ReelMapApp: App {
                 }
             }
             .tint(.appAccent)
-            .environmentObject(inbox)
+            .environmentObject(activity)
             .task {
                 await app.start()
-                inbox.activate(container.mainContext)
+                activity.resume(container.mainContext)
             }
             .onChange(of: scenePhase) { _, phase in
-                // Returning from Instagram after a share lands here: pick up
-                // the in-flight reel, show the analyzing banner, sync pins.
+                // Returning from Instagram after a share lands here: refresh the
+                // queue, show status, and sync pins as reels finish.
                 if phase == .active, app.ready {
-                    inbox.activate(container.mainContext)
+                    activity.resume(container.mainContext)
                 } else if phase != .active {
-                    inbox.deactivate()
+                    activity.pause()
                 }
             }
         }

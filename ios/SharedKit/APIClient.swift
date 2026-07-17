@@ -18,9 +18,26 @@ public actor APIClient {
         let fromBuild = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
         self.baseURL = baseURL ?? URL(string: fromBuild ?? "http://localhost:8000")!
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        // Backend timestamps come from Python `datetime.now(utc)` and include
+        // fractional seconds, which the plain `.iso8601` strategy rejects. Accept
+        // ISO8601 with or without fractional seconds.
+        d.dateDecodingStrategy = .custom { decoder in
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            if let date = Self.iso8601Fractional.date(from: raw) { return date }
+            if let date = Self.iso8601Plain.date(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unparseable date: \(raw)")
+        }
         self.decoder = d
     }
+
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso8601Plain = ISO8601DateFormatter()
 
     // MARK: Auth
 
@@ -48,6 +65,11 @@ public actor APIClient {
 
     public func reelStatus(_ reelID: String) async throws -> ReelStatus {
         try await request("/reels/\(reelID)")
+    }
+
+    /// The user's reels, newest-first, with live status (the activity/queue feed).
+    public func activity() async throws -> [ReelActivity] {
+        try await request("/reels")
     }
 
     // MARK: Data

@@ -87,3 +87,26 @@ public struct ReelStatus: Codable, Sendable {
         case placeCount = "place_count"
     }
 }
+
+/// One row in the in-app activity/queue feed.
+public struct ReelActivity: Codable, Identifiable, Hashable, Sendable {
+    public var id: String { reelID }
+    public let reelID: String
+    public let status: String  // pending | processing | done | failed
+    public let platform: String
+    public let title: String?
+    public let thumbnailURL: String?
+    public let placeCount: Int
+    public let error: String?
+    public let createdAt: Date
+
+    public var isActive: Bool { status == "pending" || status == "processing" }
+
+    enum CodingKeys: String, CodingKey {
+        case status, platform, title, error
+        case reelID = "reel_id"
+        case thumbnailURL = "thumbnail_url"
+        case placeCount = "place_count"
+        case createdAt = "created_at"
+    }
+}

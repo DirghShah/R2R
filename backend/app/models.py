@@ -158,3 +158,21 @@ class Device(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user: Mapped[User] = relationship(back_populates="devices")
+
+
+class UserReel(Base):
+    """Which reels a user submitted — powers the in-app activity/queue feed.
+
+    (ReelSource itself is shared across users; this records who asked for it and
+    when, so each user gets their own newest-first history with live status.)
+    """
+
+    __tablename__ = "user_reels"
+    __table_args__ = (UniqueConstraint("user_id", "reel_source_id", name="uq_user_reel"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    reel_source_id: Mapped[str] = mapped_column(ForeignKey("reel_sources.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    reel_source: Mapped[ReelSource] = relationship()
