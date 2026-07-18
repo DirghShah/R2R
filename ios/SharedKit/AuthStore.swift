@@ -1,53 +1,34 @@
 import Foundation
-import Security
 
-/// Stores the app JWT in the shared Keychain access group so the main app and
-/// the Share Extension authenticate as the same user.
+/// Stores the session JWT in the App Group's shared UserDefaults so the main app
+/// and the Share Extension read the same token (they run in separate processes).
+///
+/// We use the App Group container rather than a shared Keychain group on purpose:
+/// keychain sharing needs a `keychain-access-groups` entitlement (separate from
+/// the App Group), and getting that wrong silently fails every read/write. The
+/// App Group is already required for the extension, so this "just works".
+///
+/// Note: a bearer JWT in App Group UserDefaults is readable by our own app +
+/// extension only. Before App Store release, move to a Keychain access group for
+/// at-rest encryption (see the README release checklist).
 public enum AuthStore {
     public static let appGroup = "group.com.yourco.reelmap"
-    private static let service = "com.yourco.reelmap.auth"
-    private static let account = "jwt"
+    private static let key = "auth_jwt"
 
-    /// Paid Developer Program: the App Group entitlement is on both the app and
-    /// the Share Extension, so the session token lives in the shared Keychain
-    /// group and the extension authenticates as the same user.
-    public static let useSharedAccessGroup = true
+    /// App Group suite when available; falls back to standard defaults (app-only)
+    /// if the App Group isn't configured yet, so the app still works standalone.
+    private static var store: UserDefaults {
+        UserDefaults(suiteName: appGroup) ?? .standard
+    }
 
     public static var token: String? {
-        get { read() }
-        set { newValue.map(save) ?? delete() }
-    }
-
-    private static func baseQuery() -> [String: Any] {
-        var q: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        if useSharedAccessGroup {
-            q[kSecAttrAccessGroup as String] = appGroup
+        get { store.string(forKey: key) }
+        set {
+            if let newValue {
+                store.set(newValue, forKey: key)
+            } else {
+                store.removeObject(forKey: key)
+            }
         }
-        return q
-    }
-
-    private static func save(_ value: String) {
-        var query = baseQuery()
-        SecItemDelete(query as CFDictionary)
-        query[kSecValueData as String] = Data(value.utf8)
-        SecItemAdd(query as CFDictionary, nil)
-    }
-
-    private static func read() -> String? {
-        var query = baseQuery()
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    private static func delete() {
-        SecItemDelete(baseQuery() as CFDictionary)
     }
 }

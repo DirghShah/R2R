@@ -4,18 +4,20 @@ import Foundation
 /// (offline / backend unreachable). The main app drains it on launch.
 public enum PendingQueue {
     private static let key = "pending_reels"
-    private static var defaults: UserDefaults? { UserDefaults(suiteName: AuthStore.appGroup) }
+    private static var store: UserDefaults {
+        UserDefaults(suiteName: AuthStore.appGroup) ?? .standard
+    }
 
     public static func enqueue(_ url: String) {
-        var list = defaults?.stringArray(forKey: key) ?? []
+        var list = store.stringArray(forKey: key) ?? []
         guard !list.contains(url) else { return }
         list.append(url)
-        defaults?.set(list, forKey: key)
+        store.set(list, forKey: key)
     }
 
     public static func drain() -> [String] {
-        let list = defaults?.stringArray(forKey: key) ?? []
-        defaults?.removeObject(forKey: key)
+        let list = store.stringArray(forKey: key) ?? []
+        store.removeObject(forKey: key)
         return list
     }
 }

@@ -13,10 +13,19 @@ public actor APIClient {
 
     private let baseURL: URL
     private let decoder: JSONDecoder
+    private let session: URLSession
 
     public init(baseURL: URL? = nil) {
         let fromBuild = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
         self.baseURL = baseURL ?? URL(string: fromBuild ?? "http://localhost:8000")!
+
+        // Fail fast when the backend is unreachable (e.g. Mac asleep / IP changed)
+        // so the Share Extension never spins forever — it queues and dismisses.
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 15
+        cfg.timeoutIntervalForResource = 20
+        cfg.waitsForConnectivity = false
+        self.session = URLSession(configuration: cfg)
         let d = JSONDecoder()
         // Backend timestamps come from Python `datetime.now(utc)` and include
         // fractional seconds, which the plain `.iso8601` strategy rejects. Accept
@@ -116,7 +125,7 @@ public actor APIClient {
         if authed, let token = AuthStore.token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else {
             throw APIError(status: -1, message: "No response")
         }
