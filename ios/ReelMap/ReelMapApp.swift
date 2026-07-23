@@ -23,6 +23,7 @@ struct ReelMapApp: App {
                 }
             }
             .tint(.appAccent)
+            .preferredColorScheme(.light)   // the design is a light theme
             .environmentObject(activity)
             .task {
                 await app.start()

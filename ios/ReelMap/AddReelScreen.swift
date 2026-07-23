@@ -2,10 +2,6 @@ import SharedKit
 import SwiftData
 import SwiftUI
 
-/// Paste/type a link and Analyze, with a live queue dashboard below: every reel
-/// you've submitted (from here OR the Share Extension), newest/active first, as
-/// expandable cards showing Queued → Analyzing → N places / Failed. Share as many
-/// reels as you like — they all stack here and process one-by-one on the server.
 struct AddReelScreen: View {
     @EnvironmentObject private var store: ActivityStore
     @Environment(\.modelContext) private var context
@@ -14,141 +10,216 @@ struct AddReelScreen: View {
     @State private var text = ""
     @State private var fieldError: String?
     @State private var submitting = false
-    @State private var expanded: Set<String> = []
 
     var body: some View {
-        NavigationStack {
+        ZStack {
+            Color.canvas.ignoresSafeArea()
             ScrollView {
-                VStack(spacing: 18) {
-                    hero
-                    inputSection
-                    analyzeButton
-                    queueSection
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("ADD A PLACE")
+                        .font(.system(size: 13, weight: .semibold)).tracking(0.4)
+                        .foregroundStyle(.linkBlue)
+                    Text("Analyze a Reel").font(.display(30, .bold)).foregroundStyle(.ink)
+                        .padding(.bottom, 16)
+
+                    inputCard
+                    if let processing { analyzingNow(processing).padding(.top, 20) }
+                    dashboard.padding(.top, 22)
+                    queueSection.padding(.top, 22)
                 }
-                .padding(20)
+                .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 30)
             }
+            .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.immediately)
-            .navigationTitle("Add a place")
-            .refreshable { await store.refreshNow(context) }
-            .task { await store.refreshNow(context) }
         }
+        .task { await store.refreshNow(context) }
+        .refreshable { await store.refreshNow(context) }
     }
 
-    // MARK: Header
+    // MARK: Input card
 
-    private var hero: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 36, weight: .semibold))
-                .foregroundStyle(.tint)
-            Text("Paste a link, get a pin").font(.title2.bold())
-            Text("Instagram, TikTok, or YouTube Shorts. Share as many as you like — they queue up here.")
-                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }
-        .padding(.top, 4)
-    }
-
-    private var inputSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var inputCard: some View {
+        VStack(spacing: 0) {
             HStack(spacing: 10) {
-                TextField("Type or paste a link", text: $text)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .submitLabel(.done)
-                    .focused($focused)
+                Image(systemName: "link").font(.system(size: 16, weight: .semibold)).foregroundStyle(.inkMuted)
+                TextField("", text: $text, prompt: Text("Paste a reel, Short, or TikTok link").foregroundColor(.inkMuted))
+                    .font(.system(size: 14)).foregroundStyle(.ink)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                    .focused($focused).submitLabel(.done)
                     .onSubmit { focused = false }
                     .onChange(of: text) { fieldError = nil }
-
-                if trimmed.isEmpty {
-                    // Reads BOTH url and string pasteboard payloads (Instagram's
-                    // "Copy link" is often a URL object, which string-only
-                    // readers silently miss).
+                if !text.isEmpty {
+                    Button { text = ""; fieldError = nil } label: {
+                        Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.inkSecondary)
+                            .frame(width: 22, height: 22).background(Color(hex: 0xE6E6DF), in: Circle())
+                    }.buttonStyle(.plain)
+                } else {
                     Button("Paste") {
                         let pb = UIPasteboard.general
-                        if let value = pb.url?.absoluteString ?? pb.string {
-                            text = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
+                        if let v = pb.url?.absoluteString ?? pb.string { text = v.trimmingCharacters(in: .whitespacesAndNewlines) }
                         focused = false
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                } else {
-                    Button { text = ""; fieldError = nil } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.appAccent)
                 }
             }
-            .padding(.vertical, 12).padding(.horizontal, 16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(fieldError == nil ? Color.primary.opacity(0.06) : .red,
-                                  lineWidth: fieldError == nil ? 1 : 1.5))
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(Color(hex: 0xF4F4EF), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
 
             if let fieldError {
                 Label(fieldError, systemImage: "exclamationmark.circle.fill")
-                    .font(.footnote).foregroundStyle(.red).transition(.opacity)
+                    .font(.footnote).foregroundStyle(.closedRed)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
             }
+
+            Button { focused = false; analyzeTapped() } label: {
+                HStack(spacing: 8) {
+                    if submitting { ProgressView().tint(.white) }
+                    else { Image(systemName: "waveform.path.ecg").font(.system(size: 16, weight: .semibold)) }
+                    Text("Analyze reel").font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 15)
+                .background(Color.appAccent, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .shadow(color: Color.appAccent.opacity(0.5), radius: 12, y: 6)
+            }
+            .buttonStyle(.plain)
+            .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty || submitting)
+            .opacity(text.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+            .padding(.top, 11)
+
+            HStack(spacing: 10) {
+                ForEach(["Instagram", "TikTok", "YouTube"], id: \.self) { p in
+                    if p != "Instagram" { Text("·").foregroundStyle(.inkMuted) }
+                    Text(p).font(.system(size: 12)).foregroundStyle(.inkMuted)
+                }
+            }
+            .frame(maxWidth: .infinity).padding(.top, 12)
         }
-        .animation(.easeInOut(duration: 0.15), value: fieldError)
+        .padding(14)
+        .card(22)
     }
 
-    private var analyzeButton: some View {
-        Button { focused = false; analyzeTapped() } label: {
-            HStack {
-                if submitting { ProgressView().tint(.white); Spacer().frame(width: 8) }
-                Text("Analyze").font(.headline)
+    // MARK: Live dashboard
+
+    private var dashboard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Circle().fill(Color.appAccent).frame(width: 8, height: 8)
+                    .symbolEffect(.pulse)
+                Text("Live dashboard").font(.display(16, .semibold)).foregroundStyle(.ink)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 6)
+            HStack(spacing: 10) {
+                statCard("\(analyzedToday)", "Analyzed today", .appAccent)
+                statCard("\(queuedCount)", "In queue", .linkBlue)
+                statCard("\(placesFound)", "Places found", .ink)
+            }
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(trimmed.isEmpty || submitting)
     }
 
-    // MARK: Queue dashboard
+    private func statCard(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.display(24, .bold)).foregroundStyle(color)
+            Text(label).font(.system(size: 11.5)).foregroundStyle(.inkSecondary).lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 13)
+        .card(18)
+    }
+
+    // MARK: Analyzing now (dark card)
+
+    private func analyzingNow(_ item: ReelActivity) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Circle().fill(Color(hex: 0x4ADE9B)).frame(width: 7, height: 7).symbolEffect(.pulse)
+                Text("ANALYZING NOW").font(.system(size: 12, weight: .semibold)).tracking(0.3)
+                    .foregroundStyle(Color(hex: 0x8FE6BD))
+                Spacer()
+                Text(PlatformStyle.name(item.platform).uppercased())
+                    .font(.system(size: 10, weight: .bold)).tracking(0.3).foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(PlatformStyle.color(item.platform), in: RoundedRectangle(cornerRadius: 6))
+            }
+            Text(item.title ?? PlatformStyle.name(item.platform) + " reel")
+                .font(.display(17, .semibold)).foregroundStyle(.white).lineLimit(2)
+                .padding(.top, 9)
+            Text("Extracting places & tips").font(.system(size: 13)).foregroundStyle(Color(hex: 0x89B3A2))
+                .padding(.top, 2)
+            ProgressView().progressViewStyle(.linear).tint(Color(hex: 0x4ADE9B))
+                .padding(.top, 14)
+        }
+        .padding(16)
+        .background(Color.deepGreen, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    // MARK: Queue
 
     @ViewBuilder private var queueSection: some View {
-        if !store.items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+        let queued = store.items.filter { $0.status == "pending" }
+        let done = store.items.filter { $0.status == "done" || $0.status == "failed" }
+        if !queued.isEmpty {
+            VStack(alignment: .leading, spacing: 9) {
                 HStack {
-                    Text("Queue").font(.headline)
+                    Text("In queue").font(.display(15, .semibold)).foregroundStyle(.ink)
                     Spacer()
-                    if store.activeCount > 0 {
-                        Label("\(store.activeCount) analyzing", systemImage: "circle.dashed")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .symbolEffect(.pulse, options: .repeating)
-                    }
+                    Text("\(queued.count) waiting").font(.system(size: 13)).foregroundStyle(.inkSecondary)
                 }
-                ForEach(sortedItems) { item in
-                    QueueCard(item: item, expanded: expanded.contains(item.id)) {
-                        withAnimation(.snappy) {
-                            if expanded.contains(item.id) { expanded.remove(item.id) }
-                            else { expanded.insert(item.id) }
-                        }
-                    }
+                ForEach(Array(queued.enumerated()), id: \.element.id) { idx, q in
+                    queueRow(pos: idx + 1, item: q, chip: "Queued", chipColor: .inkMuted)
                 }
             }
-            .padding(.top, 6)
+        }
+        if !done.isEmpty {
+            VStack(alignment: .leading, spacing: 9) {
+                Text("Recent").font(.display(15, .semibold)).foregroundStyle(.ink).padding(.top, queued.isEmpty ? 0 : 14)
+                ForEach(done.prefix(8)) { d in
+                    queueRow(pos: nil, item: d,
+                             chip: d.status == "failed" ? "Failed" : (d.placeCount > 0 ? "\(d.placeCount) place\(d.placeCount == 1 ? "" : "s")" : "No places"),
+                             chipColor: d.status == "failed" ? .closedRed : (d.placeCount > 0 ? .appAccent : .inkMuted))
+                }
+            }
         }
     }
 
-    private var sortedItems: [ReelActivity] {
-        store.items.sorted { a, b in
-            if a.isActive != b.isActive { return a.isActive }  // active on top
-            return a.createdAt > b.createdAt                    // then newest
+    private func queueRow(pos: Int?, item: ReelActivity, chip: String, chipColor: Color) -> some View {
+        HStack(spacing: 12) {
+            Group {
+                if let pos {
+                    Text("\(pos)").font(.system(size: 13, weight: .bold)).foregroundStyle(.inkMuted)
+                } else {
+                    Image(systemName: PlatformStyle.icon(item.platform)).font(.system(size: 14)).foregroundStyle(.inkMuted)
+                }
+            }
+            .frame(width: 34, height: 34)
+            .background(Color(hex: 0xF0F0EA), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title ?? PlatformStyle.name(item.platform) + " reel")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.ink).lineLimit(1)
+                Text(PlatformStyle.name(item.platform)).font(.system(size: 12)).foregroundStyle(.inkMuted)
+            }
+            Spacer(minLength: 6)
+            Text(chip).font(.system(size: 11, weight: .semibold)).foregroundStyle(chipColor)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(chipColor.opacity(0.12), in: Capsule())
         }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.cardStroke))
     }
 
-    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    // MARK: Derived data
+
+    private var processing: ReelActivity? { store.items.first { $0.status == "processing" } }
+    private var queuedCount: Int { store.items.filter { $0.status == "pending" }.count }
+    private var analyzedToday: Int {
+        store.items.filter { $0.status == "done" && Calendar.current.isDateInToday($0.createdAt) }.count
+    }
+    private var placesFound: Int { store.items.filter { $0.status == "done" }.reduce(0) { $0 + $1.placeCount } }
 
     // MARK: Flow
 
     private func analyzeTapped() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let link = LinkValidator.firstSupportedLink(in: trimmed) else {
             fieldError = "That doesn't look like an Instagram, TikTok, or YouTube link."
             return
@@ -164,120 +235,9 @@ struct AddReelScreen: View {
             _ = try await APIClient.shared.submitReel(url: link)
             text = ""
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            store.resume(context)   // refresh the queue + resume polling immediately
+            store.resume(context)
         } catch {
             fieldError = error.localizedDescription
-        }
-    }
-}
-
-// MARK: - Queue card
-
-private struct QueueCard: View {
-    let item: ReelActivity
-    let expanded: Bool
-    let toggle: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button(action: toggle) {
-                HStack(spacing: 12) {
-                    thumbnail
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title ?? platformName)
-                            .font(.subheadline.weight(.medium)).lineLimit(1)
-                            .foregroundStyle(.primary)
-                        statusChip
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                }
-                .padding(14)
-            }
-            .buttonStyle(.plain)
-
-            if expanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-                    detailRow("Source", platformName)
-                    detailRow("Added", item.createdAt.formatted(.relative(presentation: .named)))
-                    if item.status == "done" {
-                        detailRow("Result", item.placeCount > 0
-                                  ? "\(item.placeCount) place\(item.placeCount == 1 ? "" : "s") on your map"
-                                  : "No places found in this reel")
-                    }
-                    if let err = item.error, !err.isEmpty {
-                        detailRow("Error", err)
-                    }
-                }
-                .padding(.horizontal, 14).padding(.bottom, 14)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .card(18)
-    }
-
-    private var thumbnail: some View {
-        Group {
-            if let s = item.thumbnailURL, let url = URL(string: s) {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { icon }
-            } else { icon }
-        }
-        .frame(width: 46, height: 46)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var icon: some View {
-        ZStack {
-            Color.appAccent.opacity(0.12)
-            Image(systemName: platformIcon).foregroundStyle(.tint)
-        }
-    }
-
-    @ViewBuilder private var statusChip: some View {
-        switch item.status {
-        case "pending":
-            Label("Queued", systemImage: "clock")
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-        case "processing":
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text("Analyzing…").font(.caption.weight(.semibold)).foregroundStyle(.tint)
-            }
-        case "done":
-            Label(item.placeCount > 0 ? "\(item.placeCount) place\(item.placeCount == 1 ? "" : "s")" : "No places",
-                  systemImage: item.placeCount > 0 ? "checkmark.circle.fill" : "minus.circle")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(item.placeCount > 0 ? .green : .secondary)
-        default:
-            Label("Failed", systemImage: "exclamationmark.triangle.fill")
-                .font(.caption.weight(.semibold)).foregroundStyle(.orange)
-        }
-    }
-
-    private func detailRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(label).font(.caption).foregroundStyle(.secondary).frame(width: 60, alignment: .leading)
-            Text(value).font(.caption).foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var platformName: String {
-        switch item.platform {
-        case "tiktok": return "TikTok video"
-        case "youtube": return "YouTube Short"
-        default: return "Instagram reel"
-        }
-    }
-    private var platformIcon: String {
-        switch item.platform {
-        case "tiktok": return "music.note"
-        case "youtube": return "play.rectangle.fill"
-        default: return "camera.fill"
         }
     }
 }

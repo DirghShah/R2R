@@ -1,117 +1,158 @@
 import SwiftData
-import SharedKit
 import SwiftUI
 
 struct CityListsScreen: View {
     @Environment(\.modelContext) private var context
-    @Query(sort: \CachedList.title) private var lists: [CachedList]
+    @Query(sort: \CachedPlace.savedAt, order: .reverse) private var places: [CachedPlace]
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    ForEach(groupedByCity, id: \.key) { city, lists in
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(city).font(.title3.bold()).padding(.horizontal, 4)
-                            ForEach(lists) { list in
-                                NavigationLink(value: list.id) { ListRow(list: list) }
-                                    .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-                .padding(20)
-            }
-            .navigationTitle("Lists")
-            .navigationDestination(for: String.self) { listID in
-                if let list = lists.first(where: { $0.id == listID }) {
-                    ListDetailScreen(list: list)
-                }
-            }
-            .overlay { if lists.isEmpty { empty } }
-            .task { await Syncer.refresh(context) }
-            .refreshable { await Syncer.refresh(context, force: true) }
-        }
+    @State private var expanded: Set<String> = []
+    @State private var selected: CachedPlace?
+
+    private var cities: [(name: String, places: [CachedPlace])] {
+        let groups = Dictionary(grouping: places) { $0.city ?? "Other" }
+        return groups
+            .map { (name: $0.key, places: $0.value.sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }) }
+            .sorted { $0.places.count > $1.places.count }
     }
 
-    private var groupedByCity: [(key: String, value: [CachedList])] {
-        Dictionary(grouping: lists) { $0.city ?? "Other" }.sorted { $0.key < $1.key }
+    var body: some View {
+        ZStack {
+            Color.canvas.ignoresSafeArea()
+            if places.isEmpty {
+                empty
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        header
+                        ForEach(cities, id: \.name) { city in
+                            CityRow(
+                                name: city.name,
+                                places: city.places,
+                                expanded: expanded.contains(city.name),
+                                toggle: { toggle(city.name) },
+                                openPlace: { selected = $0 })
+                        }
+                    }
+                    .padding(.bottom, 24)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .task { await Syncer.refresh(context) }
+        .refreshable { await Syncer.refresh(context, force: true) }
+        .sheet(item: $selected) { PlaceDetailScreen(place: $0) }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("SAVED FROM REELS")
+                .font(.system(size: 13, weight: .semibold)).tracking(0.4)
+                .foregroundStyle(.appAccent)
+            Text("Your Lists").font(.display(30, .bold)).foregroundStyle(.ink)
+            Text("\(places.count) place\(places.count == 1 ? "" : "s") across \(cities.count) cit\(cities.count == 1 ? "y" : "ies")")
+                .font(.system(size: 14)).foregroundStyle(.inkSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 18)
     }
 
     private var empty: some View {
-        ContentUnavailableView {
-            Label("No lists yet", systemImage: "square.stack.3d.up")
-        } description: {
-            Text("Add reels and we'll build city lists automatically.")
+        VStack(spacing: 8) {
+            Image(systemName: "square.stack.3d.up").font(.largeTitle).foregroundStyle(.inkMuted)
+            Text("No saved places yet").font(.display(18, .semibold)).foregroundStyle(.ink)
+            Text("Analyze a reel and we'll build city lists automatically.")
+                .font(.callout).foregroundStyle(.inkSecondary).multilineTextAlignment(.center)
+        }
+        .padding(32)
+    }
+
+    private func toggle(_ city: String) {
+        withAnimation(.snappy) {
+            if expanded.contains(city) { expanded.remove(city) } else { expanded.insert(city) }
         }
     }
 }
 
-private struct ListRow: View {
-    let list: CachedList
-    private var category: PlaceCategory { PlaceCategory(rawValue: list.category ?? "other") ?? .other }
+private struct CityRow: View {
+    let name: String
+    let places: [CachedPlace]
+    let expanded: Bool
+    let toggle: () -> Void
+    let openPlace: (CachedPlace) -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: category.symbol)
-                .font(.headline).foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(category.tint, in: .circle)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(list.title).font(.headline)
-                Text("\(list.placeCount) place\(list.placeCount == 1 ? "" : "s")")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Image(systemName: "chevron.right").foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .card(20)
-    }
-}
-
-struct ListDetailScreen: View {
-    let list: CachedList
-    @Query private var places: [CachedPlace]
-    @State private var selected: CachedPlace?
-
-    init(list: CachedList) {
-        self.list = list
-        let category = list.category
-        let city = list.city
-        _places = Query(filter: #Predicate<CachedPlace> { p in
-            p.category == category ?? "" && p.city == city
-        }, sort: \CachedPlace.name)
-    }
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                ForEach(places) { place in
-                    Button { selected = place } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(place.name).font(.headline)
-                                if let a = place.address {
-                                    Text(a).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            Spacer()
-                            if let r = place.rating {
-                                Label(String(format: "%.1f", r), systemImage: "star.fill")
-                                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(14)
-                        .card(18)
+        VStack(spacing: 0) {
+            Button(action: toggle) {
+                HStack(spacing: 13) {
+                    Text(String(name.prefix(1)).uppercased())
+                        .font(.display(20, .bold)).foregroundStyle(.ink)
+                        .frame(width: 44, height: 44)
+                        .background(Color(hex: 0xEEF1EC), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(name).font(.display(18, .semibold)).foregroundStyle(.ink)
+                        Text("\(places.count) place\(places.count == 1 ? "" : "s")")
+                            .font(.system(size: 13)).foregroundStyle(.inkSecondary)
                     }
-                    .buttonStyle(.plain)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.inkMuted)
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                }
+                .padding(.horizontal, 22).padding(.vertical, 16)
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(spacing: 9) {
+                    ForEach(Array(places.enumerated()), id: \.element.id) { idx, place in
+                        PlaceListCard(place: place, rank: idx + 1) { openPlace(place) }
+                    }
+                }
+                .padding(.horizontal, 14).padding(.bottom, 8)
+                .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .top) { Rectangle().fill(Color.cardStroke).frame(height: 1) }
+    }
+}
+
+private struct PlaceListCard: View {
+    let place: CachedPlace
+    let rank: Int
+    let open: () -> Void
+    private var cat: PlaceCategory { place.categoryEnum }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 13) {
+                ZStack(alignment: .bottomTrailing) {
+                    InitialThumb(text: place.initialLetter, color: cat.tint)
+                    Text("\(rank)")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.ink)
+                        .frame(width: 20, height: 20)
+                        .background(Color.white, in: Circle())
+                        .overlay(Circle().strokeBorder(Color.canvas, lineWidth: 2))
+                        .offset(x: 5, y: 5)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(place.name).font(.display(16, .semibold)).foregroundStyle(.ink).lineLimit(1)
+                    Text(place.address ?? place.city ?? cat.displayName)
+                        .font(.system(size: 13)).foregroundStyle(.inkSecondary).lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                if let rating = place.rating {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(.appAccent)
+                        Text(String(format: "%.1f", rating)).font(.system(size: 14, weight: .bold)).foregroundStyle(.ink)
+                    }
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(Color(hex: 0xF3F6F1), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                 }
             }
-            .padding(20)
+            .padding(10)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.cardStroke))
         }
-        .navigationTitle(list.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $selected) { PlaceDetailScreen(place: $0) }
+        .buttonStyle(.plain)
     }
 }
