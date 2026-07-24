@@ -11,8 +11,23 @@ struct CityListsScreen: View {
     private var cities: [(name: String, places: [CachedPlace])] {
         let groups = Dictionary(grouping: places) { $0.city ?? "Other" }
         return groups
-            .map { (name: $0.key, places: $0.value.sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }) }
-            .sorted { $0.places.count > $1.places.count }
+            .map { key, value in
+                // Deterministic within-city order: rating desc, then name.
+                let sorted = value.sorted {
+                    ($0.rating ?? 0) != ($1.rating ?? 0)
+                        ? ($0.rating ?? 0) > ($1.rating ?? 0)
+                        : $0.name < $1.name
+                }
+                return (name: key, places: sorted)
+            }
+            // Total order (count desc, then name) so expanding a city never
+            // reshuffles the list — Dictionary order + an unstable sort otherwise
+            // let equal-count cities swap on every re-render.
+            .sorted {
+                $0.places.count != $1.places.count
+                    ? $0.places.count > $1.places.count
+                    : $0.name < $1.name
+            }
     }
 
     var body: some View {

@@ -8,7 +8,6 @@ struct MapScreen: View {
     @Query(sort: \CachedPlace.savedAt, order: .reverse) private var allPlaces: [CachedPlace]
 
     @StateObject private var location = LocationManager()
-    @State private var selected: CachedPlace?
     @State private var filter: String = allFilter
     @State private var detail: CachedPlace?
     @State private var showActivity = false
@@ -42,9 +41,7 @@ struct MapScreen: View {
             ForEach(pins) { place in
                 if let coord = place.coordinate {
                     Annotation(place.name, coordinate: coord) {
-                        TeardropPin(place: place, selected: selected?.id == place.id) {
-                            withAnimation(.spring(duration: 0.3)) { selected = place }
-                        }
+                        SimplePin(color: place.pinColor) { detail = place }
                     }
                 }
             }
@@ -93,7 +90,7 @@ struct MapScreen: View {
                     let on = filter == label
                     let dot = dotColor(for: label)
                     Button {
-                        withAnimation(.snappy) { filter = label; selected = nil }
+                        withAnimation(.snappy) { filter = label }
                     } label: {
                         HStack(spacing: 7) {
                             Circle().fill(on ? Color.white : dot).frame(width: 8, height: 8)
@@ -130,8 +127,7 @@ struct MapScreen: View {
             }
         }
         .padding(.trailing, 18)
-        .padding(.bottom, selected == nil ? 24 : 130)
-        .animation(.snappy, value: selected != nil)
+        .padding(.bottom, 24)
     }
 
     private func fab(system: String, badge: Int, action: @escaping () -> Void) -> some View {
@@ -155,87 +151,29 @@ struct MapScreen: View {
     // MARK: Bottom preview / empty
 
     @ViewBuilder private var bottomLayer: some View {
-        if let selected {
-            MiniPreview(place: selected, open: { detail = selected }, close: { withAnimation { self.selected = nil } })
-                .padding(.horizontal, 14).padding(.bottom, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if allPlaces.isEmpty {
+        if allPlaces.isEmpty {
             EmptyHint().padding(.horizontal, 24).padding(.bottom, 16)
         }
     }
 }
 
-// MARK: - Teardrop pin
+// MARK: - Simple color-coded pin
 
-private struct TeardropPin: View {
-    let place: CachedPlace
-    let selected: Bool
+/// A plain dot whose color encodes the cuisine/category (no icon). Tapping it
+/// opens the full place detail sheet.
+private struct SimplePin: View {
+    let color: Color
     let tap: () -> Void
 
     var body: some View {
         Button(action: tap) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(place.pinColor)
-                    .frame(width: 26, height: 26)
-                    .rotationEffect(.degrees(45))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .strokeBorder(.white, lineWidth: 3)
-                            .frame(width: 26, height: 26)
-                            .rotationEffect(.degrees(45)))
-                    .shadow(color: Color(hex: 0x1E2822).opacity(0.5), radius: 5, y: 3)
-                Image(systemName: place.categoryEnum.symbol)
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-            }
-            .scaleEffect(selected ? 1.25 : 1)
+            Circle()
+                .fill(color)
+                .frame(width: 20, height: 20)
+                .overlay(Circle().strokeBorder(.white, lineWidth: 3))
+                .shadow(color: Color(hex: 0x1E2822).opacity(0.45), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Mini preview card
-
-private struct MiniPreview: View {
-    let place: CachedPlace
-    let open: () -> Void
-    let close: () -> Void
-    private var tint: Color { place.pinColor }
-
-    var body: some View {
-        HStack(spacing: 13) {
-            InitialThumb(text: place.initialLetter, color: tint, size: 56, radius: 16)
-            Button(action: open) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(place.filterLabel.uppercased())
-                        .font(.system(size: 11, weight: .bold)).tracking(0.4)
-                        .foregroundStyle(tint)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(tint.opacity(0.12), in: Capsule())
-                    Text(place.name).font(.display(18, .semibold)).foregroundStyle(.ink).lineLimit(1)
-                    if let rating = place.rating {
-                        HStack(spacing: 5) {
-                            Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(.starGold)
-                            Text(String(format: "%.1f", rating)).font(.system(size: 13, weight: .bold)).foregroundStyle(.ink)
-                            if let a = place.address ?? place.city { Text("· \(a)").font(.system(size: 13)).foregroundStyle(.inkSecondary).lineLimit(1) }
-                        }
-                    } else if let a = place.address ?? place.city {
-                        Text(a).font(.system(size: 13)).foregroundStyle(.inkSecondary).lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            Button(action: close) {
-                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.inkSecondary)
-                    .frame(width: 26, height: 26).background(Color(hex: 0xF1F1EC), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .frame(maxHeight: .infinity, alignment: .top)
-        }
-        .padding(14)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: Color(hex: 0x1E2822).opacity(0.35), radius: 24, y: 14)
     }
 }
 
