@@ -45,6 +45,7 @@ class InstagramFetcher:
             video_url=first_value(item, "videoUrl", "videoUrlHd", "videoUrlBackup"),
             at_handles=collect_handles(item, caption),
             tagged_location=location_name(item),
+            tagged_address=(item.get("location") or {}).get("address") if isinstance(item.get("location"), dict) else None,
             hashtags=normalize_hashtags(item.get("hashtags"), caption),
             raw=item,
         )

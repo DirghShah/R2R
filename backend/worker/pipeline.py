@@ -121,11 +121,18 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
         tagged_location=data.tagged_location,
         hashtags=data.hashtags,
         frames=sampled,
+        author_handle=data.author_handle,
+        tagged_address=data.tagged_address,
     )
     reel.summary = result.extraction.overall_summary
 
+    places = result.extraction.places
+    # A precise platform address describes the reel's single tagged venue — only
+    # trust it to pin when the reel is about one place (not a "10 cafes" list).
+    single_venue_address = data.tagged_address if len(places) == 1 else None
+
     saved = 0
-    for ep in result.extraction.places:
+    for ep in places:
         # Inherit the reel-level city/country when a place doesn't name its own —
         # a "9 cafes in Dallas" reel rarely repeats the city per item.
         ep.city = ep.city or result.extraction.primary_city
@@ -134,7 +141,7 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
         # One flaky geocoding call must never fail the whole reel: fall back to
         # an un-pinned place (still listed) and keep going.
         try:
-            geo = geocode.geocode(ep)
+            geo = geocode.geocode(ep, address_hint=single_venue_address)
         except Exception:  # noqa: BLE001
             log.warning("geocode raised for %r — saving without a pin", ep.name, exc_info=True)
             geo = geocode.GeocodeResult(name=ep.name, city=ep.city, country=ep.country)

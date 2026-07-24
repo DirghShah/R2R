@@ -42,8 +42,19 @@ class GeocodeResult:
     country: str | None = None
 
 
-def geocode(place) -> GeocodeResult:
-    """Always returns a GeocodeResult. lat/lng may be None if no match found."""
+def geocode(place, address_hint: str | None = None) -> GeocodeResult:
+    """Always returns a GeocodeResult. lat/lng may be None if no match found.
+
+    `address_hint` is a precise street address the platform attached to the post
+    (e.g. TikTok's locationMeta). When present, we geocode it directly and trust
+    the top hit — this avoids name-collision mispins (a "Café Luna" in the wrong
+    borough) that plague venue-name-only lookups.
+    """
+    if address_hint:
+        precise = _nominatim_address(address_hint, place)
+        if precise is not None:
+            return precise
+
     if settings.geocoder == "google" and settings.google_places_api_key:
         result = _google(place)
     else:
@@ -52,6 +63,35 @@ def geocode(place) -> GeocodeResult:
     if result.lat is None:
         log.warning("geocode: no coordinates for %r — will save without map pin", place.name)
     return result
+
+
+def _nominatim_address(address: str, place) -> GeocodeResult | None:
+    """Geocode a precise street address and trust the top hit. Returns None if
+    Nominatim finds nothing (caller then falls back to name-based lookup)."""
+    try:
+        r = httpx.get(
+            _NOMINATIM,
+            params={"q": address, "format": "json", "limit": 1},
+            headers={"User-Agent": "ReelMap/0.1 (dev)"},
+            timeout=30,
+        )
+        r.raise_for_status()
+        results = r.json()
+    except Exception:  # noqa: BLE001
+        log.warning("nominatim address lookup failed for %r", address, exc_info=True)
+        return None
+    if not results:
+        return None
+    top = results[0]
+    return GeocodeResult(
+        external_place_id=f"osm:{top.get('osm_type','')}/{top.get('osm_id','')}",
+        name=place.name,
+        lat=float(top["lat"]),
+        lng=float(top["lon"]),
+        address=address,  # keep the clean platform address, not OSM's verbose one
+        city=place.city,
+        country=getattr(place, "country", None),
+    )
 
 
 def _google_query(place) -> str:

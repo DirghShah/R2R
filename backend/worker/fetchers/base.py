@@ -26,6 +26,9 @@ class ReelData:
     video_url: str | None = None
     at_handles: list[str] = field(default_factory=list)
     tagged_location: str | None = None
+    # A precise street address the platform attached to the post (e.g. TikTok's
+    # locationMeta). Strong geocoding signal for single-venue reels.
+    tagged_address: str | None = None
     hashtags: list[str] = field(default_factory=list)
     # The untouched actor/scraper payload, kept only for the debug/verification
     # harness (worker.cli --raw). The pipeline ignores it; it's discarded with

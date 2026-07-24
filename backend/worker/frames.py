@@ -17,9 +17,19 @@ _FFMPEG = shutil.which("ffmpeg")
 _MAX_FRAMES = 12
 
 
+class _NotAVideo(RuntimeError):
+    """The URL served HTML/text, not video bytes (usually a platform watch page)."""
+
+
 def _download(video_url: str, dest: Path) -> None:
     with httpx.stream("GET", video_url, timeout=120, follow_redirects=True) as r:
         r.raise_for_status()
+        # A fetcher that falls back to the platform watch page (tiktok.com/@…/video,
+        # youtube.com/shorts/…) hands us an HTML document. Downloading it and feeding
+        # it to ffmpeg yields a confusing "moov atom not found" — bail early instead.
+        ctype = r.headers.get("content-type", "").lower()
+        if ctype.startswith(("text/", "application/xhtml", "application/json")):
+            raise _NotAVideo(f"expected video, got {ctype!r} from {video_url[:60]}")
         with dest.open("wb") as f:
             for chunk in r.iter_bytes():
                 f.write(chunk)

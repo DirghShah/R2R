@@ -123,8 +123,13 @@ exactly 9 places.
 - **City/country inference**: use every available clue (tagged location, caption text, hashtags, \
 on-screen text) to infer the city and country for each place. Set `primary_city` / `primary_country` \
 at the top level, then inherit them for all places unless a specific place clearly belongs elsewhere.
+- **Exclude the reel's own creator.** The CREATOR account (the poster/reviewer) is NOT a place — \
+never output it as a venue, even when it's @-mentioned in the caption ("another spot is linked @theirhandle"). \
+Only extract venues the reel actually features or recommends.
 - **Instagram handle**: extract the @handle (without @) from caption mentions like `@ottoscoffee` \
 or `@funnylibrarycoffee` — this is the strongest geocoding key and must always be captured.
+- **Tagged address**: when a precise street address is provided (TAGGED ADDRESS), it belongs to the \
+reel's primary venue — use it to fix that place's city/neighborhood.
 - **Website**: if the venue's website URL is visible in the video or caption, include it. \
 If you can confidently infer it from the handle (e.g. @ottoscoffee → https://ottoscoffee.com, \
 @lalalandkindcafe → https://lalalandkindcafe.com), include it. Leave null when uncertain.
@@ -169,11 +174,18 @@ def _build_text(
     at_handles: list[str],
     tagged_location: str | None,
     hashtags: list[str],
+    author_handle: str | None = None,
+    tagged_address: str | None = None,
 ) -> str:
     parts = ["Extract the recommended places from this reel.\n"]
     parts.append(f"CAPTION:\n{caption or '(none)'}")
+    parts.append(
+        f"CREATOR (the account that POSTED this reel — the reviewer, NOT a place): "
+        f"@{author_handle}" if author_handle else "CREATOR: (unknown)"
+    )
     parts.append(f"TAGGED ACCOUNTS: {', '.join(at_handles) or '(none)'}")
     parts.append(f"TAGGED LOCATION: {tagged_location or '(none)'}")
+    parts.append(f"TAGGED ADDRESS: {tagged_address or '(none)'}")
     parts.append(f"HASHTAGS: {', '.join(hashtags) or '(none)'}")
     if transcript:
         parts.append(f"AUDIO TRANSCRIPT:\n{transcript}")
@@ -217,6 +229,8 @@ def extract_places(
     tagged_location: str | None = None,
     hashtags: list[str] | None = None,
     frames: list[bytes] | None = None,
+    author_handle: str | None = None,
+    tagged_address: str | None = None,
 ) -> ExtractionResult:
     """Fuse all reel signals into a structured place list via one Claude call."""
     text = _build_text(
@@ -225,6 +239,8 @@ def extract_places(
         at_handles=at_handles or [],
         tagged_location=tagged_location,
         hashtags=hashtags or [],
+        author_handle=author_handle,
+        tagged_address=tagged_address,
     )
     content: list[dict] = [{"type": "text", "text": text}]
     content += [_image_block(f) for f in (frames or [])]

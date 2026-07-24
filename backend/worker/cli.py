@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     _kv("caption", f"{len(data.caption or '')} chars")
     _kv("@handles", data.at_handles or "(none)")
     _kv("tagged_location", data.tagged_location or "(none)")
+    _kv("tagged_address", data.tagged_address or "(none)")
     _kv("hashtags", data.hashtags or "(none)")
     _kv("video_url", "present" if data.video_url else "(none — caption-only)")
     _kv("thumbnail_url", "present" if data.thumbnail_url else "(none)")
@@ -103,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
         tagged_location=data.tagged_location,
         hashtags=data.hashtags,
         frames=sampled,
+        author_handle=data.author_handle,
+        tagged_address=data.tagged_address,
     )
     extraction = result.extraction
     _kv("model", extract.settings.anthropic_model)
@@ -116,11 +119,12 @@ def main(argv: list[str] | None = None) -> int:
         from worker import geocode as _g
 
         _hr("STAGE 5 · GEOCODE")
+        single_addr = data.tagged_address if len(extraction.places) == 1 else None
         for ep in extraction.places:
             ep.city = ep.city or extraction.primary_city
             ep.country = ep.country or extraction.primary_country
             try:
-                g = _g.geocode(ep)
+                g = _g.geocode(ep, address_hint=single_addr)
             except Exception as exc:  # noqa: BLE001
                 _kv(ep.name, f"ERROR: {exc}")
                 geocoded.append({"name": ep.name, "error": str(exc)})
