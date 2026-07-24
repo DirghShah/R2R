@@ -27,6 +27,25 @@ extension Color {
     static let deepGreen    = Color(hex: 0x0F2A20)  // "Analyzing now" card
 }
 
+/// SwiftUI resolves `.foregroundStyle(.appAccent)` / `.fill(.appAccent)` via
+/// implicit-member lookup on `ShapeStyle`, NOT on `Color` — so the `Color`
+/// statics above aren't visible there (that's the "Type 'ShapeStyle' has no
+/// member …" error). Mirror them here so the brand palette works anywhere a
+/// ShapeStyle is expected, exactly like the built-in `.red`/`.blue` do.
+extension ShapeStyle where Self == Color {
+    static var appAccent: Color    { Color.appAccent }
+    static var ink: Color          { Color.ink }
+    static var inkSecondary: Color { Color.inkSecondary }
+    static var inkMuted: Color     { Color.inkMuted }
+    static var canvas: Color       { Color.canvas }
+    static var cardStroke: Color   { Color.cardStroke }
+    static var hairline: Color     { Color.hairline }
+    static var linkBlue: Color     { Color.linkBlue }
+    static var starGold: Color     { Color.starGold }
+    static var closedRed: Color    { Color.closedRed }
+    static var deepGreen: Color    { Color.deepGreen }
+}
+
 extension Font {
     /// Display headings (mock uses Bricolage Grotesque; nearest native is a
     /// heavy rounded grotesque). Swap for the bundled font later for exactness.
