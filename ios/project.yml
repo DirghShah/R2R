@@ -22,7 +22,7 @@ settings:
     # e.g. name "Dirgh-MacBook-Air" -> http://Dirgh-MacBook-Air.local:8000
     # (Simulator can still use http://localhost:8000. Same Wi-Fi required —
     #  for cellular use a tunnel like ngrok instead.)
-    API_BASE_URL: "http://REPLACE-WITH-MAC-NAME.local:8000"
+    API_BASE_URL: "http://Dirghs-MacBook-Pro-2.local:8000"
 
 targets:
   ReelMap:
