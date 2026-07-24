@@ -23,6 +23,7 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let category: String
+    public let cuisine: String?
     public let lat: Double?
     public let lng: Double?
     public let address: String?
@@ -31,7 +32,7 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let photos: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, category, lat, lng, address, rating, photos
+        case id, name, category, cuisine, lat, lng, address, rating, photos
         case priceLevel = "price_level"
     }
 }

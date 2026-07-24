@@ -34,6 +34,7 @@ class PlaceOut(BaseModel):
     id: str
     name: str
     category: str
+    cuisine: str | None = None
     lat: float | None = None
     lng: float | None = None
     address: str | None = None

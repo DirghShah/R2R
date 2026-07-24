@@ -156,6 +156,7 @@ def _upsert_place(db, ep, geo) -> Place:
         db.add(place)
     place.name = geo.name or ep.name
     place.category = ep.category
+    place.cuisine = ep.cuisine
     place.lat = geo.lat
     place.lng = geo.lng
     place.address = geo.address

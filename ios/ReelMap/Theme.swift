@@ -63,6 +63,43 @@ extension PlaceCategory {
     }
 }
 
+/// Cuisine / venue-type colors. The AI tags each place with a free-form cuisine
+/// label ("Italian", "Cocktail Bar", "Nightclub", …). Known labels get a curated
+/// color; anything unrecognized gets a stable color from a fallback palette so the
+/// same cuisine always looks the same (a per-process `hashValue` would flicker).
+enum CuisineStyle {
+    private static let known: [String: UInt] = [
+        "italian": 0xCF6B46, "pizza": 0xCF6B46, "mediterranean": 0xC99A2E,
+        "greek": 0x2F6FE0, "spanish": 0xD2683B, "french": 0x8E5AA8,
+        "japanese": 0xB8455F, "sushi": 0xB8455F, "ramen": 0xB8455F,
+        "korean": 0xC0563F, "chinese": 0xC0563F, "thai": 0x2FA37A,
+        "vietnamese": 0x2FA37A, "indian": 0xD98324, "mexican": 0xC99A2E,
+        "american": 0x7A6A55, "burgers": 0x7A6A55, "bbq": 0x8A4B2F,
+        "steakhouse": 0x8A4B2F, "seafood": 0x2B8FB3, "middle eastern": 0xB07A2E,
+        "café": 0xA9793F, "cafe": 0xA9793F, "coffee": 0xA9793F,
+        "bakery": 0xB98B4E, "brunch": 0xC99A2E, "dessert": 0xD46A8E,
+        "ice cream": 0xD46A8E, "vegan": 0x159A6A, "vegetarian": 0x159A6A,
+        "cocktail bar": 0x7A5CC0, "wine bar": 0x8E5AA8, "bar": 0x7A5CC0,
+        "brewery": 0xB07A2E, "nightclub": 0xB8455F, "club": 0xB8455F,
+        "hotel": 0x2B8FB3, "rooftop": 0x2B8FB3,
+    ]
+
+    private static let fallback: [UInt] = [
+        0xCF6B46, 0x2B8FB3, 0x7A5CC0, 0xC99A2E, 0x2FA37A,
+        0xB8455F, 0x2F6FE0, 0xA9793F, 0x8A4B2F, 0xD46A8E,
+    ]
+
+    static func color(_ cuisine: String?) -> Color? {
+        guard let cuisine else { return nil }
+        let key = cuisine.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty else { return nil }
+        if let hex = known[key] { return Color(hex: hex) }
+        // Stable hash across launches (String.hashValue is randomized per process).
+        let sum = key.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return Color(hex: fallback[sum % fallback.count])
+    }
+}
+
 /// Platform accent colors from the mock.
 enum PlatformStyle {
     static func color(_ platform: String) -> Color {
@@ -84,44 +121,6 @@ enum PlatformStyle {
         case "tiktok": return "music.note"
         case "youtube": return "play.rectangle.fill"
         default: return "camera.fill"
-        }
-    }
-}
-
-enum MapFilter: String, CaseIterable, Identifiable {
-    case all, cafes, food, stays, nightlife, sights
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .all: return "All"
-        case .cafes: return "Cafés"
-        case .food: return "Food"
-        case .stays: return "Stays"
-        case .nightlife: return "Nightlife"
-        case .sights: return "Sights"
-        }
-    }
-
-    var dotColor: Color {
-        switch self {
-        case .all: return .appAccent
-        case .cafes: return PlaceCategory.cafe.tint
-        case .food: return PlaceCategory.restaurant.tint
-        case .stays: return PlaceCategory.hotel.tint
-        case .nightlife: return PlaceCategory.bar.tint
-        case .sights: return PlaceCategory.sight.tint
-        }
-    }
-
-    func matches(_ category: PlaceCategory) -> Bool {
-        switch self {
-        case .all: return true
-        case .cafes: return category == .cafe
-        case .food: return category == .restaurant
-        case .stays: return category == .hotel
-        case .nightlife: return category == .bar || category == .club
-        case .sights: return category == .sight || category == .event
         }
     }
 }
@@ -149,4 +148,16 @@ extension CachedPlace {
         let letters = name.filter { $0.isLetter }
         return String(letters.first ?? name.first ?? "•").uppercased()
     }
+
+    /// AI cuisine label if present, else the broad category ("Café", "Bar", …).
+    /// Drives the map filter chips and the pin/detail tags.
+    var filterLabel: String {
+        if let c = cuisine?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
+            return c
+        }
+        return categoryEnum.displayName
+    }
+
+    /// Cuisine-tinted pin color, falling back to the category tint.
+    var pinColor: Color { CuisineStyle.color(cuisine) ?? categoryEnum.tint }
 }

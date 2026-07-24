@@ -29,6 +29,13 @@ class ExtractedPlace(BaseModel):
                     "Prefer the spelling from the @handle or official on-screen text; never abbreviate."
     )
     category: str = Field(description=CATEGORIES)
+    cuisine: str | None = Field(
+        default=None,
+        description="Short cuisine or venue-type label for filtering & display, Title Case. "
+                    "For food: e.g. 'Italian', 'Japanese', 'Mexican', 'Thai', 'Greek', 'Seafood', "
+                    "'Café', 'Bakery', 'Cocktail Bar', 'Wine Bar', 'Nightclub'. "
+                    "For non-food places (hotels, sights) leave null.",
+    )
     city: str | None = Field(default=None, description="City, inferred from all signals")
     country: str | None = Field(default=None, description="Country, inferred from all signals")
     neighborhood: str | None = Field(default=None, description="Neighborhood/district e.g. 'Bishop Arts'")

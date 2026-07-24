@@ -120,13 +120,23 @@ private struct PlaceListCard: View {
     let place: CachedPlace
     let rank: Int
     let open: () -> Void
-    private var cat: PlaceCategory { place.categoryEnum }
+    private var tint: Color { place.pinColor }
+
+    /// "Italian · Downtown" — cuisine label first, then the area when we have it.
+    private var subtitle: String {
+        let area = place.address ?? place.city
+        if let cuisine = place.cuisine?.trimmingCharacters(in: .whitespacesAndNewlines), !cuisine.isEmpty {
+            if let area, !area.isEmpty { return "\(cuisine) · \(area)" }
+            return cuisine
+        }
+        return area ?? place.categoryEnum.displayName
+    }
 
     var body: some View {
         Button(action: open) {
             HStack(spacing: 13) {
                 ZStack(alignment: .bottomTrailing) {
-                    InitialThumb(text: place.initialLetter, color: cat.tint)
+                    InitialThumb(text: place.initialLetter, color: tint)
                     Text("\(rank)")
                         .font(.system(size: 11, weight: .bold)).foregroundStyle(.ink)
                         .frame(width: 20, height: 20)
@@ -136,7 +146,7 @@ private struct PlaceListCard: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(place.name).font(.display(16, .semibold)).foregroundStyle(.ink).lineLimit(1)
-                    Text(place.address ?? place.city ?? cat.displayName)
+                    Text(subtitle)
                         .font(.system(size: 13)).foregroundStyle(.inkSecondary).lineLimit(1)
                 }
                 Spacer(minLength: 6)

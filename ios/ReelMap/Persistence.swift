@@ -11,6 +11,7 @@ final class CachedPlace {
     @Attribute(.unique) var id: String
     var name: String
     var category: String
+    var cuisine: String?
     var lat: Double?
     var lng: Double?
     var address: String?
@@ -28,14 +29,14 @@ final class CachedPlace {
     var savedAt: Date
 
     init(
-        id: String, name: String, category: String,
+        id: String, name: String, category: String, cuisine: String? = nil,
         lat: Double?, lng: Double?, address: String?, rating: Double?,
         reelURL: String?, summary: String?,
         tips: [String], whatToOrder: [String], vibe: [String],
         instagramHandle: String?, website: String?, hoursHint: String?,
         priceLevelAI: Int?, city: String?, savedAt: Date
     ) {
-        self.id = id; self.name = name; self.category = category
+        self.id = id; self.name = name; self.category = category; self.cuisine = cuisine
         self.lat = lat; self.lng = lng; self.address = address; self.rating = rating
         self.reelURL = reelURL; self.summary = summary
         self.tips = tips; self.whatToOrder = whatToOrder; self.vibe = vibe
@@ -47,6 +48,7 @@ final class CachedPlace {
     convenience init(dto: SavedPlace) {
         self.init(
             id: dto.id, name: dto.place.name, category: dto.place.category,
+            cuisine: dto.place.cuisine,
             lat: dto.place.lat, lng: dto.place.lng, address: dto.place.address,
             rating: dto.place.rating, reelURL: dto.reelURL, summary: dto.description,
             tips: dto.tips ?? [], whatToOrder: dto.whatToOrder ?? [], vibe: dto.vibe ?? [],

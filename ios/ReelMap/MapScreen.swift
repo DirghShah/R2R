@@ -7,18 +7,38 @@ struct MapScreen: View {
     @EnvironmentObject private var activity: ActivityStore
     @Query(sort: \CachedPlace.savedAt, order: .reverse) private var allPlaces: [CachedPlace]
 
+    @StateObject private var location = LocationManager()
     @State private var selected: CachedPlace?
-    @State private var filter: MapFilter = .all
+    @State private var filter: String = allFilter
     @State private var detail: CachedPlace?
     @State private var showActivity = false
     @State private var camera: MapCameraPosition = .automatic
+    @State private var didCenterOnUser = false
+
+    private static let allFilter = "All"
+
+    /// "All" + the distinct cuisine/venue labels currently on the map, in order of
+    /// how many places carry them (most common first) — so the chips reflect the
+    /// user's actual saved reels, not a fixed list.
+    private var filterOptions: [String] {
+        var counts: [String: Int] = [:]
+        for p in allPlaces where p.coordinate != nil {
+            counts[p.filterLabel, default: 0] += 1
+        }
+        let labels = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                           .map(\.key)
+        return [Self.allFilter] + labels
+    }
 
     private var pins: [CachedPlace] {
-        allPlaces.filter { $0.coordinate != nil && filter.matches($0.categoryEnum) }
+        allPlaces.filter {
+            $0.coordinate != nil && (filter == Self.allFilter || $0.filterLabel == filter)
+        }
     }
 
     var body: some View {
         Map(position: $camera) {
+            UserAnnotation()
             ForEach(pins) { place in
                 if let coord = place.coordinate {
                     Annotation(place.name, coordinate: coord) {
@@ -40,10 +60,28 @@ struct MapScreen: View {
         }
         .overlay(alignment: .bottomTrailing) { fabColumn }
         .overlay(alignment: .bottom) { bottomLayer }
-        .task { await Syncer.refresh(context) }
+        .task {
+            location.request()
+            await Syncer.refresh(context)
+        }
+        .onChange(of: location.authorized) { _, ok in
+            // Center on the user as soon as we're granted access (first launch flow).
+            if ok { centerOnUser() }
+        }
+        .onAppear {
+            // Returning to the tab when already authorized: snap to the user once.
+            if location.authorized && !didCenterOnUser { centerOnUser() }
+        }
         .refreshable { await Syncer.refresh(context, force: true) }
         .sheet(item: $detail) { PlaceDetailScreen(place: $0) }
         .sheet(isPresented: $showActivity) { ActivityView() }
+    }
+
+    private func centerOnUser() {
+        didCenterOnUser = true
+        withAnimation(.easeInOut) {
+            camera = .userLocation(fallback: .automatic)
+        }
     }
 
     // MARK: Filter chips
@@ -51,18 +89,19 @@ struct MapScreen: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 9) {
-                ForEach(MapFilter.allCases) { f in
-                    let on = filter == f
+                ForEach(filterOptions, id: \.self) { label in
+                    let on = filter == label
+                    let dot = dotColor(for: label)
                     Button {
-                        withAnimation(.snappy) { filter = f; selected = nil; camera = .automatic }
+                        withAnimation(.snappy) { filter = label; selected = nil }
                     } label: {
                         HStack(spacing: 7) {
-                            Circle().fill(on ? Color.white : f.dotColor).frame(width: 8, height: 8)
-                            Text(f.label).font(.system(size: 13, weight: .semibold))
+                            Circle().fill(on ? Color.white : dot).frame(width: 8, height: 8)
+                            Text(label).font(.system(size: 13, weight: .semibold))
                         }
                         .foregroundStyle(on ? Color.white : .ink)
                         .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(Capsule().fill(on ? f.dotColor : Color.white))
+                        .background(Capsule().fill(on ? dot : Color.white))
                         .overlay(Capsule().strokeBorder(on ? .clear : Color(hex: 0xE6E6DF)))
                         .shadow(color: Color(hex: 0x1E2822).opacity(0.12), radius: 6, y: 2)
                     }
@@ -73,12 +112,22 @@ struct MapScreen: View {
         }
     }
 
+    private func dotColor(for label: String) -> Color {
+        if label == Self.allFilter { return .appAccent }
+        return CuisineStyle.color(label)
+            ?? allPlaces.first { $0.filterLabel == label }?.categoryEnum.tint
+            ?? .appAccent
+    }
+
     // MARK: FABs (activity + locate)
 
     private var fabColumn: some View {
         VStack(spacing: 12) {
             fab(system: "square.stack.3d.up", badge: activity.activeCount) { showActivity = true }
-            fab(system: "location.fill", badge: 0) { withAnimation { camera = .automatic } }
+            fab(system: "location.fill", badge: 0) {
+                if location.authorized { centerOnUser() }
+                else { location.request() }
+            }
         }
         .padding(.trailing, 18)
         .padding(.bottom, selected == nil ? 24 : 130)
@@ -127,7 +176,7 @@ private struct TeardropPin: View {
         Button(action: tap) {
             ZStack {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(place.categoryEnum.tint)
+                    .fill(place.pinColor)
                     .frame(width: 26, height: 26)
                     .rotationEffect(.degrees(45))
                     .overlay(
@@ -151,18 +200,18 @@ private struct MiniPreview: View {
     let place: CachedPlace
     let open: () -> Void
     let close: () -> Void
-    private var cat: PlaceCategory { place.categoryEnum }
+    private var tint: Color { place.pinColor }
 
     var body: some View {
         HStack(spacing: 13) {
-            InitialThumb(text: place.initialLetter, color: cat.tint, size: 56, radius: 16)
+            InitialThumb(text: place.initialLetter, color: tint, size: 56, radius: 16)
             Button(action: open) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(cat.displayName.uppercased())
+                    Text(place.filterLabel.uppercased())
                         .font(.system(size: 11, weight: .bold)).tracking(0.4)
-                        .foregroundStyle(cat.tint)
+                        .foregroundStyle(tint)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(cat.tint.opacity(0.12), in: Capsule())
+                        .background(tint.opacity(0.12), in: Capsule())
                     Text(place.name).font(.display(18, .semibold)).foregroundStyle(.ink).lineLimit(1)
                     if let rating = place.rating {
                         HStack(spacing: 5) {

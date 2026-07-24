@@ -17,7 +17,7 @@ settings:
     DEVELOPMENT_TEAM: "98B96Q5HQP"
     # For the Simulator use localhost. For a physical iPhone, set this to your
     # Mac's LAN IP, e.g. http://192.168.1.20:8000  (find it: ipconfig getifaddr en0)
-    API_BASE_URL: "http://192.168.1.78:8000"
+    API_BASE_URL: "http://192.168.1.99:8000"
 
 targets:
   ReelMap:
@@ -40,6 +40,9 @@ targets:
       properties:
         API_BASE_URL: $(API_BASE_URL)
         UILaunchScreen: {}
+        # Shown in the "Allow ReelMap to use your location?" prompt — required or
+        # the map's blue-dot / center-on-me feature silently does nothing.
+        NSLocationWhenInUseUsageDescription: "ReelMap centers the map on your location so you can see saved spots near you."
         # DEV ONLY: lets the device talk to your Mac's backend over plain HTTP.
         # Remove before shipping (production uses HTTPS).
         NSAppTransportSecurity:

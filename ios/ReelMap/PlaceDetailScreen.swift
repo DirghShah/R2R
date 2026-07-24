@@ -7,6 +7,7 @@ struct PlaceDetailScreen: View {
     @State private var showMapsDialog = false
 
     private var cat: PlaceCategory { place.categoryEnum }
+    private var tint: Color { place.pinColor }
     private var hasCoords: Bool { place.coordinate != nil }
 
     var body: some View {
@@ -51,10 +52,14 @@ struct PlaceDetailScreen: View {
             .padding(16)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(cat.displayName.uppercased())
-                    .font(.system(size: 11, weight: .bold)).tracking(0.5).foregroundStyle(.white)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 8))
+                HStack(spacing: 6) {
+                    Image(systemName: cat.symbol).font(.system(size: 10, weight: .bold))
+                    Text(place.filterLabel.uppercased())
+                        .font(.system(size: 11, weight: .bold)).tracking(0.5)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 8))
                 Text(place.name).font(.display(28, .bold)).foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.3), radius: 12, y: 2)
             }
@@ -65,7 +70,7 @@ struct PlaceDetailScreen: View {
     }
 
     private var gradient: some View {
-        LinearGradient(colors: [cat.tint, cat.tint.opacity(0.73), Color.deepGreen],
+        LinearGradient(colors: [tint, tint.opacity(0.73), Color.deepGreen],
                        startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
@@ -145,7 +150,7 @@ struct PlaceDetailScreen: View {
     private var sourcedFrom: some View {
         HStack(spacing: 11) {
             ZStack {
-                LinearGradient(colors: [cat.tint, Color.deepGreen], startPoint: .topLeading, endPoint: .bottomTrailing)
+                LinearGradient(colors: [tint, Color.deepGreen], startPoint: .topLeading, endPoint: .bottomTrailing)
                 Image(systemName: "play.fill").font(.system(size: 15)).foregroundStyle(.white)
             }
             .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

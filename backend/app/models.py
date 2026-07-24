@@ -89,6 +89,7 @@ class Place(Base):
     external_place_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String)
     category: Mapped[str] = mapped_column(String, default="other")
+    cuisine: Mapped[str | None] = mapped_column(String, nullable=True)
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
