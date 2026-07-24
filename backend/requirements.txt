@@ -20,6 +20,9 @@ httpx>=0.27
 
 # --- AI / pipeline ---
 anthropic>=0.40
+# Universal reel video downloader — the frame-sampling fallback across
+# Instagram, TikTok, and YouTube when the fetcher has no usable media URL.
+yt-dlp>=2024.8.6
 
 # --- Push notifications ---
 aioapns>=3.1

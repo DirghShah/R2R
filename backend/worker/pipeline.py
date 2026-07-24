@@ -106,7 +106,11 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
     reel.thumbnail_url = data.thumbnail_url
 
     # Transient media: sample frames + transcribe, then it's gone (no storage).
-    sampled = frames.sample_frames(data.video_url)
+    # Pass the reel page URL so frames.sample_frames can fall back to yt-dlp when
+    # the fetcher has no usable direct media URL. Skip the page fallback for the
+    # offline stub (its URL is a placeholder, not a real reel).
+    page_url = data.url if settings.reel_fetcher != "stub" else None
+    sampled = frames.sample_frames(data.video_url, page_url=page_url)
     transcript = None
     if data.video_url:
         from worker import transcribe as _t  # deferred (heavy whisper import)

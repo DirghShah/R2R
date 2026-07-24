@@ -77,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- Stage 2: frames -------------------------------------------------
     _hr("STAGE 2 · FRAMES")
-    sampled = frames.sample_frames(data.video_url)
+    page_url = None if args.stub else data.url
+    sampled = frames.sample_frames(data.video_url, page_url=page_url)
     _kv("frames sampled", len(sampled))
     if args.save_frames and sampled:
         out = Path(args.save_frames)
