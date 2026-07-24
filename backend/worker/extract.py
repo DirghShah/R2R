@@ -16,7 +16,7 @@ import base64
 from dataclasses import dataclass
 
 import anthropic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.config import settings
 
@@ -192,6 +192,23 @@ def _build_text(
     return "\n\n".join(parts)
 
 
+# We extract via a *forced tool call* rather than `messages.parse`
+# (output_config.format). Structured outputs compile the schema into a
+# decoding grammar server-side; our nested places-list schema is complex enough
+# that the compile can exceed the server limit ("400 Grammar compilation timed
+# out"). Non-strict tool use fills the same schema without grammar compilation,
+# and we validate the result with Pydantic + one repair retry.
+_TOOL_NAME = "record_reel_places"
+
+
+def _extraction_tool() -> dict:
+    return {
+        "name": _TOOL_NAME,
+        "description": "Record the structured list of every place the reel recommends or features.",
+        "input_schema": ReelExtraction.model_json_schema(),
+    }
+
+
 def extract_places(
     *,
     caption: str | None = None,
@@ -212,21 +229,43 @@ def extract_places(
     content: list[dict] = [{"type": "text", "text": text}]
     content += [_image_block(f) for f in (frames or [])]
 
-    resp = _get_client().messages.parse(
-        model=settings.anthropic_model,
-        max_tokens=6000,
-        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": content}],
-        output_format=ReelExtraction,
-    )
+    tool = _extraction_tool()
+    last_error: Exception | None = None
+    # Two attempts: a truncated or malformed tool call (rare with forced tool
+    # use) is retried once before we give up and fail the reel.
+    for _ in range(2):
+        resp = _get_client().messages.create(
+            model=settings.anthropic_model,
+            max_tokens=8000,
+            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": content}],
+            tools=[tool],
+            tool_choice={"type": "tool", "name": _TOOL_NAME},
+        )
 
-    if resp.stop_reason == "refusal":
-        detail = getattr(resp, "stop_details", None)
-        raise ExtractionRefused(f"Claude refused extraction: {detail}")
+        if resp.stop_reason == "refusal":
+            detail = getattr(resp, "stop_details", None)
+            raise ExtractionRefused(f"Claude refused extraction: {detail}")
 
-    usage = resp.usage
-    return ExtractionResult(
-        extraction=resp.parsed_output,
-        input_tokens=getattr(usage, "input_tokens", 0) or 0,
-        output_tokens=getattr(usage, "output_tokens", 0) or 0,
-    )
+        tool_use = next(
+            (b for b in resp.content if getattr(b, "type", None) == "tool_use" and b.name == _TOOL_NAME),
+            None,
+        )
+        if tool_use is None:
+            last_error = RuntimeError("Claude returned no extraction tool call")
+            continue
+
+        try:
+            extraction = ReelExtraction.model_validate(tool_use.input)
+        except ValidationError as exc:
+            last_error = exc
+            continue
+
+        usage = resp.usage
+        return ExtractionResult(
+            extraction=extraction,
+            input_tokens=getattr(usage, "input_tokens", 0) or 0,
+            output_tokens=getattr(usage, "output_tokens", 0) or 0,
+        )
+
+    raise RuntimeError(f"extraction failed to produce valid output: {last_error}")
