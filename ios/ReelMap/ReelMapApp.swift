@@ -10,7 +10,7 @@ struct ReelMapApp: App {
 
     private let container: ModelContainer = {
         // Fail-fast on schema errors; models are simple value stores.
-        try! ModelContainer(for: CachedPlace.self, CachedList.self)
+        try! ModelContainer(for: CachedPlace.self, CachedList.self, PlaceMark.self)
     }()
 
     var body: some Scene {
@@ -23,7 +23,6 @@ struct ReelMapApp: App {
                 }
             }
             .tint(.appAccent)
-            .preferredColorScheme(.light)   // the design is a light theme
             .environmentObject(activity)
             .task {
                 await app.start()

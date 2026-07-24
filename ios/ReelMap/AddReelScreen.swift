@@ -63,7 +63,7 @@ struct AddReelScreen: View {
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(Color(hex: 0xF4F4EF), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .background(Color.cardStroke, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
 
             if let fieldError {
                 Label(fieldError, systemImage: "exclamationmark.circle.fill")
@@ -182,15 +182,18 @@ struct AddReelScreen: View {
 
     private func queueRow(pos: Int?, item: ReelActivity, chip: String, chipColor: Color) -> some View {
         HStack(spacing: 12) {
-            Group {
-                if let pos {
+            ZStack {
+                if let s = item.thumbnailURL, let url = URL(string: s) {
+                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.cardStroke }
+                } else if let pos {
                     Text("\(pos)").font(.system(size: 13, weight: .bold)).foregroundStyle(.inkMuted)
                 } else {
                     Image(systemName: PlatformStyle.icon(item.platform)).font(.system(size: 14)).foregroundStyle(.inkMuted)
                 }
             }
-            .frame(width: 34, height: 34)
-            .background(Color(hex: 0xF0F0EA), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .frame(width: 38, height: 38)
+            .background(Color.cardStroke)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title ?? PlatformStyle.name(item.platform) + " reel")
@@ -203,7 +206,7 @@ struct AddReelScreen: View {
                 .background(chipColor.opacity(0.12), in: Capsule())
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.cardStroke))
     }
 

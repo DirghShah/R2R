@@ -1,11 +1,20 @@
+import CoreLocation
 import MapKit
 import SharedKit
+import SwiftData
 import SwiftUI
 
 struct PlaceDetailScreen: View {
     let place: CachedPlace
+    var userLocation: CLLocation? = nil
+    var detents: Set<PresentationDetent> = [.large]
+
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @State private var showMapsDialog = false
+    @State private var mark: PlaceMark?
+    @State private var visited = false
+    @State private var note = ""
 
     private var cat: PlaceCategory { place.categoryEnum }
     private var tint: Color { place.pinColor }
@@ -24,6 +33,7 @@ struct PlaceDetailScreen: View {
                     if !place.tips.isEmpty { tipsCard }
                     if !place.whatToOrder.isEmpty { orderCard }
                     infoCard
+                    visitedCard
                     sourcedFrom
                     actions
                 }
@@ -32,8 +42,10 @@ struct PlaceDetailScreen: View {
         }
         .scrollIndicators(.hidden)
         .background(Color.canvas)
-        .presentationDetents([.large])
+        .presentationDetents(detents)
         .presentationDragIndicator(.visible)
+        .onAppear(perform: loadMark)
+        .onDisappear(perform: persistMark)
         .confirmationDialog("Open in Maps", isPresented: $showMapsDialog, titleVisibility: .visible) {
             Button("Apple Maps") { openAppleMaps() }
             Button("Google Maps") { openGoogleMaps() }
@@ -44,12 +56,13 @@ struct PlaceDetailScreen: View {
 
     private var hero: some View {
         ZStack(alignment: .bottomLeading) {
-            gradient
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 32, height: 32).background(Color(hex: 0x101A14).opacity(0.35), in: Circle())
+            heroBackground
+            HStack {
+                ShareLink(item: shareText) { heroButton("square.and.arrow.up") }
+                Spacer()
+                Button { dismiss() } label: { heroButton("xmark") }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(16)
 
             VStack(alignment: .leading, spacing: 8) {
@@ -75,34 +88,79 @@ struct PlaceDetailScreen: View {
                        startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    /// Real venue photo (Google) with a legibility scrim, or the gradient.
+    @ViewBuilder private var heroBackground: some View {
+        if let url = place.firstPhotoURL {
+            AsyncImage(url: url) { img in
+                img.resizable().scaledToFill()
+            } placeholder: {
+                gradient.overlay(ProgressView().tint(.white))
+            }
+            .overlay(LinearGradient(colors: [.clear, .black.opacity(0.55)],
+                                    startPoint: .center, endPoint: .bottom))
+        } else {
+            gradient
+        }
+    }
+
+    private func heroButton(_ system: String) -> some View {
+        Image(systemName: system).font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+            .frame(width: 32, height: 32).background(Color(hex: 0x101A14).opacity(0.35), in: Circle())
+    }
+
+    private var shareText: String {
+        var parts = [place.name]
+        if let a = place.address ?? place.city { parts.append(a) }
+        if let g = place.googleMapsURL { parts.append(g) }
+        else if let r = place.reelURL { parts.append(r) }
+        return parts.joined(separator: "\n")
+    }
+
     // MARK: Rows
 
     private var badgeRow: some View {
-        HStack(spacing: 10) {
-            if let r = place.rating {
-                HStack(spacing: 6) {
-                    Image(systemName: "star.fill").font(.system(size: 14)).foregroundStyle(.starGold)
-                    Text(String(format: "%.1f", r)).font(.display(16, .bold)).foregroundStyle(.ink)
-                    if let n = place.reviewCount, n > 0 {
-                        Text("(\(n.formatted()))").font(.system(size: 12)).foregroundStyle(.inkSecondary)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if let r = place.rating {
+                    HStack(spacing: 6) {
+                        Image(systemName: "star.fill").font(.system(size: 14)).foregroundStyle(.starGold)
+                        Text(String(format: "%.1f", r)).font(.display(16, .bold)).foregroundStyle(.ink)
+                        if let n = place.reviewCount, n > 0 {
+                            Text("(\(n.formatted()))").font(.system(size: 12)).foregroundStyle(.inkSecondary)
+                        }
                     }
-                }
-                .padding(.horizontal, 13).padding(.vertical, 9).card(14)
-            }
-            if let price = place.priceString {
-                Text(price).font(.system(size: 15, weight: .semibold)).foregroundStyle(.ink)
                     .padding(.horizontal, 13).padding(.vertical, 9).card(14)
+                }
+                if let price = place.priceString {
+                    Text(price).font(.system(size: 15, weight: .semibold)).foregroundStyle(.ink)
+                        .padding(.horizontal, 13).padding(.vertical, 9).card(14)
+                }
+                if let d = place.distanceMeters(from: userLocation) {
+                    Label(DistanceFormat.short(d), systemImage: "location.fill")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.inkSecondary)
+                        .padding(.horizontal, 13).padding(.vertical, 9).card(14)
+                }
+                openChip
             }
-            if place.isPermanentlyClosed {
-                Text("Permanently closed").font(.system(size: 13, weight: .semibold)).foregroundStyle(.closedRed)
-                    .padding(.horizontal, 13).padding(.vertical, 9)
-                    .background(Color(hex: 0xFBEBE7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else if let h = place.hoursHint {
-                Text(h).font(.system(size: 13, weight: .semibold)).foregroundStyle(.appAccent)
-                    .padding(.horizontal, 13).padding(.vertical, 9)
-                    .background(Color(hex: 0xEAF5EF), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
+            .padding(.vertical, 2)
         }
+        .scrollClipDisabled()
+    }
+
+    @ViewBuilder private var openChip: some View {
+        if place.isPermanentlyClosed {
+            statusChip("Permanently closed", color: .closedRed)
+        } else if let st = place.openStatus {
+            statusChip(st.label, color: st.open ? .appAccent : .closedRed)
+        } else if let h = place.hoursHint {
+            statusChip(h, color: .appAccent)
+        }
+    }
+
+    private func statusChip(_ text: String, color: Color) -> some View {
+        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(color).lineLimit(1)
+            .padding(.horizontal, 13).padding(.vertical, 9)
+            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var tipsCard: some View {
@@ -190,6 +248,46 @@ struct PlaceDetailScreen: View {
                 }.buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: Visited + notes (local, survives sync)
+
+    private var visitedCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $visited) {
+                Label("I've been here", systemImage: visited ? "checkmark.seal.fill" : "checkmark.seal")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(.ink)
+            }
+            .tint(.appAccent)
+            .onChange(of: visited) { _, _ in Haptics.select(); persistMark() }
+
+            Rectangle().fill(Color.hairline).frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("YOUR NOTES").font(.system(size: 11, weight: .semibold)).tracking(0.4).foregroundStyle(.inkMuted)
+                TextField("Add a private note…", text: $note, axis: .vertical)
+                    .font(.system(size: 14)).foregroundStyle(.ink).lineLimit(1...4)
+            }
+        }
+        .padding(16).card(20)
+    }
+
+    private func loadMark() {
+        let id = place.id
+        let descriptor = FetchDescriptor<PlaceMark>(predicate: #Predicate { $0.placeID == id })
+        if let m = try? context.fetch(descriptor).first {
+            mark = m; visited = m.visited; note = m.note
+        }
+    }
+
+    private func persistMark() {
+        if let m = mark {
+            m.visited = visited; m.note = note; m.updatedAt = .now
+        } else if visited || !note.isEmpty {
+            let m = PlaceMark(placeID: place.id, visited: visited, note: note)
+            context.insert(m); mark = m
+        }
+        try? context.save()
     }
 
     // MARK: Helpers

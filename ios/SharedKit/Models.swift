@@ -19,6 +19,21 @@ public enum PlaceCategory: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// Google-shaped opening hours (from the Places API `regularOpeningHours`).
+public struct OpeningHours: Codable, Hashable, Sendable {
+    public struct Point: Codable, Hashable, Sendable {
+        public let day: Int      // 0 = Sunday … 6 = Saturday
+        public let hour: Int
+        public let minute: Int
+    }
+    public struct Period: Codable, Hashable, Sendable {
+        public let open: Point?
+        public let close: Point?
+    }
+    public let periods: [Period]?
+    public let weekdayDescriptions: [String]?
+}
+
 public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
@@ -31,14 +46,17 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let reviewCount: Int?
     public let priceLevel: Int?
     public let photos: [String]?
+    public let hours: OpeningHours?
+    public let utcOffsetMinutes: Int?
     public let phone: String?
     public let businessStatus: String?
     public let googleMapsURL: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, category, cuisine, lat, lng, address, rating, photos, phone
+        case id, name, category, cuisine, lat, lng, address, rating, photos, phone, hours
         case reviewCount = "review_count"
         case priceLevel = "price_level"
+        case utcOffsetMinutes = "utc_offset_minutes"
         case businessStatus = "business_status"
         case googleMapsURL = "google_maps_url"
     }

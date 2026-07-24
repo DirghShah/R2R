@@ -25,6 +25,7 @@ _DEV_MIGRATIONS = [
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS business_status VARCHAR",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS google_maps_url VARCHAR",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS utc_offset_minutes INTEGER",
 ]
 
 

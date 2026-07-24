@@ -1,8 +1,9 @@
 import SharedKit
 import SwiftUI
+import UIKit
 
-/// Design system translated from the "Reel Analyzer" HTML mock.
-/// Light theme: cream canvas, ink text, brand green, category-colored accents.
+/// Design system translated from the "Reel Analyzer" HTML mock. Cream/ink light
+/// theme with brand green + category accents, now with adaptive dark variants.
 
 extension Color {
     init(hex: UInt) {
@@ -13,18 +14,26 @@ extension Color {
                   opacity: 1)
     }
 
-    // Palette (from the mock)
+    /// Light/dark adaptive color from two hex values.
+    static func dynamic(_ light: UInt, _ dark: UInt) -> Color {
+        Color(uiColor: UIColor { tc in
+            UIColor(Color(hex: tc.userInterfaceStyle == .dark ? dark : light))
+        })
+    }
+
+    // Palette — neutrals adapt to dark mode; brand hues stay put.
     static let appAccent    = Color(hex: 0x159A6A)  // brand green
-    static let ink          = Color(hex: 0x16201C)  // primary text
-    static let inkSecondary = Color(hex: 0x6B746F)
-    static let inkMuted     = Color(hex: 0x9AA39D)
-    static let canvas       = Color(hex: 0xF6F6F3)  // screen background
-    static let cardStroke   = Color(hex: 0xEEEEE8)
-    static let hairline     = Color(hex: 0xF2F2EC)
-    static let linkBlue     = Color(hex: 0x2F6FE0)
+    static let ink          = dynamic(0x16201C, 0xF1F4F1)  // primary text
+    static let inkSecondary = dynamic(0x6B746F, 0xA7B0AA)
+    static let inkMuted     = dynamic(0x9AA39D, 0x6E766F)
+    static let canvas       = dynamic(0xF6F6F3, 0x111412)  // screen background
+    static let cardFill     = dynamic(0xFFFFFF, 0x1C201E)  // card surface (was white)
+    static let cardStroke   = dynamic(0xEEEEE8, 0x2B2F2C)
+    static let hairline     = dynamic(0xF2F2EC, 0x262A27)
+    static let linkBlue     = dynamic(0x2F6FE0, 0x5B8DF0)
     static let starGold     = Color(hex: 0xF0A91E)
-    static let closedRed    = Color(hex: 0xC0563F)
-    static let deepGreen    = Color(hex: 0x0F2A20)  // "Analyzing now" card
+    static let closedRed    = dynamic(0xC0563F, 0xE07D66)
+    static let deepGreen    = Color(hex: 0x0F2A20)  // "Analyzing now" card (always dark)
 }
 
 /// SwiftUI resolves `.foregroundStyle(.appAccent)` / `.fill(.appAccent)` via
@@ -38,6 +47,7 @@ extension ShapeStyle where Self == Color {
     static var inkSecondary: Color { Color.inkSecondary }
     static var inkMuted: Color     { Color.inkMuted }
     static var canvas: Color       { Color.canvas }
+    static var cardFill: Color     { Color.cardFill }
     static var cardStroke: Color   { Color.cardStroke }
     static var hairline: Color     { Color.hairline }
     static var linkBlue: Color     { Color.linkBlue }
@@ -149,7 +159,7 @@ struct CardBackground: ViewModifier {
     var radius: CGFloat = 20
     func body(content: Content) -> some View {
         content
-            .background(Color.white, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .background(Color.cardFill, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(Color.cardStroke, lineWidth: 1))
@@ -179,4 +189,21 @@ extension CachedPlace {
 
     /// Cuisine-tinted pin color, falling back to the category tint.
     var pinColor: Color { CuisineStyle.color(cuisine) ?? categoryEnum.tint }
+}
+
+/// Light, non-intrusive haptics — makes taps feel physical.
+enum Haptics {
+    static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    static func select() { UISelectionFeedbackGenerator().selectionChanged() }
+    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+}
+
+enum DistanceFormat {
+    /// "450 ft", "0.3 mi", "12 mi".
+    static func short(_ meters: Double) -> String {
+        let miles = meters / 1609.34
+        if miles < 0.1 { return "\(Int((meters * 3.28084).rounded())) ft" }
+        if miles < 10 { return String(format: "%.1f mi", miles) }
+        return "\(Int(miles.rounded())) mi"
+    }
 }

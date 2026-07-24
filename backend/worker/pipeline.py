@@ -184,6 +184,7 @@ def _upsert_place(db, ep, geo) -> Place:
     place.price_level = geo.price_level
     place.photos = geo.photos or None
     place.hours = geo.hours
+    place.utc_offset_minutes = geo.utc_offset_minutes
     place.phone = geo.phone
     place.business_status = geo.business_status
     place.google_maps_url = geo.google_maps_url

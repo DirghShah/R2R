@@ -42,6 +42,8 @@ class PlaceOut(BaseModel):
     review_count: int | None = None
     price_level: int | None = None
     photos: list | None = None
+    hours: dict | None = None
+    utc_offset_minutes: int | None = None
     phone: str | None = None
     business_status: str | None = None
     google_maps_url: str | None = None

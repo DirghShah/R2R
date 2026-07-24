@@ -13,19 +13,22 @@ struct MapScreen: View {
     @State private var showActivity = false
     @State private var camera: MapCameraPosition = .automatic
     @State private var didCenterOnUser = false
+    @State private var region: MKCoordinateRegion?
 
     private static let allFilter = "All"
 
     /// "All" + the distinct cuisine/venue labels currently on the map, in order of
     /// how many places carry them (most common first) — so the chips reflect the
     /// user's actual saved reels, not a fixed list.
-    private var filterOptions: [String] {
+    private var labelCounts: [String: Int] {
         var counts: [String: Int] = [:]
-        for p in allPlaces where p.coordinate != nil {
-            counts[p.filterLabel, default: 0] += 1
-        }
-        let labels = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-                           .map(\.key)
+        for p in allPlaces where p.coordinate != nil { counts[p.filterLabel, default: 0] += 1 }
+        return counts
+    }
+
+    private var filterOptions: [String] {
+        let counts = labelCounts
+        let labels = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map(\.key)
         return [Self.allFilter] + labels
     }
 
@@ -35,18 +38,53 @@ struct MapScreen: View {
         }
     }
 
+    // MARK: Clustering (group nearby pins by a zoom-scaled grid)
+
+    private struct Cluster: Identifiable {
+        let id: String
+        let coordinate: CLLocationCoordinate2D
+        let places: [CachedPlace]
+        var dominantColor: Color {
+            let topLabel = Dictionary(grouping: places, by: \.filterLabel)
+                .max { $0.value.count < $1.value.count }?.key
+            return places.first { $0.filterLabel == topLabel }?.pinColor ?? .appAccent
+        }
+    }
+
+    private var clusters: [Cluster] {
+        let span = region?.span.longitudeDelta ?? 0.08
+        let cell = max(span / 14, 0.0004)  // cell size shrinks as you zoom in
+        var buckets: [String: [CachedPlace]] = [:]
+        for p in pins {
+            guard let c = p.coordinate else { continue }
+            let gx = (c.longitude / cell).rounded()
+            let gy = (c.latitude / cell).rounded()
+            buckets["\(gx)|\(gy)", default: []].append(p)
+        }
+        return buckets.map { key, group in
+            let lat = group.compactMap { $0.coordinate?.latitude }.reduce(0, +) / Double(group.count)
+            let lng = group.compactMap { $0.coordinate?.longitude }.reduce(0, +) / Double(group.count)
+            return Cluster(id: key, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng), places: group)
+        }
+    }
+
     var body: some View {
         Map(position: $camera) {
             UserAnnotation()
-            ForEach(pins) { place in
-                if let coord = place.coordinate {
-                    Annotation(place.name, coordinate: coord) {
-                        SimplePin(color: place.pinColor) { detail = place }
+            ForEach(clusters) { cluster in
+                Annotation("", coordinate: cluster.coordinate) {
+                    if cluster.places.count == 1, let place = cluster.places.first {
+                        SimplePin(color: place.pinColor) { Haptics.tap(); detail = place }
+                    } else {
+                        ClusterBubble(count: cluster.places.count, color: cluster.dominantColor) {
+                            Haptics.tap(); zoom(to: cluster.places)
+                        }
                     }
                 }
             }
         }
         .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        .onMapCameraChange(frequency: .onEnd) { ctx in region = ctx.region }
         .ignoresSafeArea(edges: .top)
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
@@ -69,8 +107,11 @@ struct MapScreen: View {
             // Returning to the tab when already authorized: snap to the user once.
             if location.authorized && !didCenterOnUser { centerOnUser() }
         }
+        .onChange(of: filter) { _, _ in fitToPins() }
         .refreshable { await Syncer.refresh(context, force: true) }
-        .sheet(item: $detail) { PlaceDetailScreen(place: $0) }
+        .sheet(item: $detail) {
+            PlaceDetailScreen(place: $0, userLocation: location.current, detents: [.medium, .large])
+        }
         .sheet(isPresented: $showActivity) { ActivityView() }
     }
 
@@ -81,6 +122,34 @@ struct MapScreen: View {
         }
     }
 
+    /// Fit the camera to whatever pins are currently shown (used when a filter
+    /// chip is tapped, so the map jumps to that cuisine's places).
+    private func fitToPins() {
+        if let r = boundingRegion(pins.compactMap { $0.coordinate }) {
+            withAnimation(.easeInOut) { camera = .region(r) }
+        }
+    }
+
+    private func zoom(to places: [CachedPlace]) {
+        if let r = boundingRegion(places.compactMap { $0.coordinate }) {
+            withAnimation(.easeInOut) { camera = .region(r) }
+        }
+    }
+
+    private func boundingRegion(_ coords: [CLLocationCoordinate2D], pad: Double = 1.4) -> MKCoordinateRegion? {
+        guard let first = coords.first else { return nil }
+        var minLat = first.latitude, maxLat = first.latitude
+        var minLng = first.longitude, maxLng = first.longitude
+        for c in coords {
+            minLat = min(minLat, c.latitude); maxLat = max(maxLat, c.latitude)
+            minLng = min(minLng, c.longitude); maxLng = max(maxLng, c.longitude)
+        }
+        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLng + maxLng) / 2)
+        let span = MKCoordinateSpan(latitudeDelta: max((maxLat - minLat) * pad, 0.004),
+                                    longitudeDelta: max((maxLng - minLng) * pad, 0.004))
+        return MKCoordinateRegion(center: center, span: span)
+    }
+
     // MARK: Filter chips
 
     private var filterBar: some View {
@@ -89,16 +158,20 @@ struct MapScreen: View {
                 ForEach(filterOptions, id: \.self) { label in
                     let on = filter == label
                     let dot = dotColor(for: label)
+                    let count = label == Self.allFilter ? labelCounts.values.reduce(0, +) : (labelCounts[label] ?? 0)
                     Button {
+                        Haptics.select()
                         withAnimation(.snappy) { filter = label }
                     } label: {
                         HStack(spacing: 7) {
                             Circle().fill(on ? Color.white : dot).frame(width: 8, height: 8)
                             Text(label).font(.system(size: 13, weight: .semibold))
+                            Text("\(count)").font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(on ? Color.white.opacity(0.85) : .inkMuted)
                         }
                         .foregroundStyle(on ? Color.white : .ink)
                         .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(Capsule().fill(on ? dot : Color.white))
+                        .background(Capsule().fill(on ? dot : Color.cardFill))
                         .overlay(Capsule().strokeBorder(on ? .clear : Color(hex: 0xE6E6DF)))
                         .shadow(color: Color(hex: 0x1E2822).opacity(0.12), radius: 6, y: 2)
                     }
@@ -137,7 +210,7 @@ struct MapScreen: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.appAccent)
                     .frame(width: 46, height: 46)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .shadow(color: Color(hex: 0x1E2822).opacity(0.28), radius: 12, y: 6)
                 if badge > 0 {
                     Text("\(badge)").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
@@ -177,6 +250,28 @@ private struct SimplePin: View {
     }
 }
 
+// MARK: - Cluster bubble
+
+/// A numbered dot standing in for several nearby pins. Tapping zooms in to
+/// split them apart.
+private struct ClusterBubble: View {
+    let count: Int
+    let color: Color
+    let tap: () -> Void
+
+    var body: some View {
+        Button(action: tap) {
+            Text("\(count)")
+                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(color))
+                .overlay(Circle().strokeBorder(.white, lineWidth: 3))
+                .shadow(color: Color(hex: 0x1E2822).opacity(0.45), radius: 5, y: 3)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Shared bits
 
 struct InitialThumb: View {
@@ -210,20 +305,25 @@ struct ToastView: View {
         }
         .foregroundStyle(.ink)
         .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Color.white, in: Capsule())
+        .background(Color.cardFill, in: Capsule())
         .shadow(color: Color(hex: 0x1E2822).opacity(0.15), radius: 10, y: 4)
     }
 }
 
 private struct EmptyHint: View {
     var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "sparkles").font(.title2).foregroundStyle(.appAccent)
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(Color.appAccent.opacity(0.12)).frame(width: 56, height: 56)
+                Image(systemName: "mappin.and.ellipse").font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.appAccent)
+            }
             Text("Your map is empty").font(.display(18, .semibold)).foregroundStyle(.ink)
-            Text("Open Analyze and paste a reel to drop your first pins.")
+            Text("Share a reel from Instagram, TikTok, or YouTube — or paste a link in Analyze — and its spots land here as pins.")
                 .font(.callout).foregroundStyle(.inkSecondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20)
+        .padding(22)
         .card(24)
     }
 }

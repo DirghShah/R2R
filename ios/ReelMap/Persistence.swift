@@ -1,4 +1,5 @@
 import CoreLocation
+import Foundation
 import SharedKit
 import SwiftData
 
@@ -21,6 +22,9 @@ final class CachedPlace {
     var phone: String?
     var businessStatus: String?
     var googleMapsURL: String?
+    var photos: [String] = []     // default keeps SwiftData lightweight-migration happy
+    var hoursData: Data?          // JSON-encoded OpeningHours (SwiftData-safe)
+    var utcOffsetMinutes: Int?
     var reelURL: String?
     var summary: String?
     var tips: [String]
@@ -38,6 +42,7 @@ final class CachedPlace {
         lat: Double?, lng: Double?, address: String?, rating: Double?,
         reviewCount: Int? = nil, priceLevel: Int? = nil, phone: String? = nil,
         businessStatus: String? = nil, googleMapsURL: String? = nil,
+        photos: [String] = [], hoursData: Data? = nil, utcOffsetMinutes: Int? = nil,
         reelURL: String?, summary: String?,
         tips: [String], whatToOrder: [String], vibe: [String],
         instagramHandle: String?, website: String?, hoursHint: String?,
@@ -47,6 +52,7 @@ final class CachedPlace {
         self.lat = lat; self.lng = lng; self.address = address; self.rating = rating
         self.reviewCount = reviewCount; self.priceLevel = priceLevel; self.phone = phone
         self.businessStatus = businessStatus; self.googleMapsURL = googleMapsURL
+        self.photos = photos; self.hoursData = hoursData; self.utcOffsetMinutes = utcOffsetMinutes
         self.reelURL = reelURL; self.summary = summary
         self.tips = tips; self.whatToOrder = whatToOrder; self.vibe = vibe
         self.instagramHandle = instagramHandle; self.website = website
@@ -62,6 +68,9 @@ final class CachedPlace {
             rating: dto.place.rating, reviewCount: dto.place.reviewCount,
             priceLevel: dto.place.priceLevel, phone: dto.place.phone,
             businessStatus: dto.place.businessStatus, googleMapsURL: dto.place.googleMapsURL,
+            photos: dto.place.photos ?? [],
+            hoursData: dto.place.hours.flatMap { try? JSONEncoder().encode($0) },
+            utcOffsetMinutes: dto.place.utcOffsetMinutes,
             reelURL: dto.reelURL, summary: dto.description,
             tips: dto.tips ?? [], whatToOrder: dto.whatToOrder ?? [], vibe: dto.vibe ?? [],
             instagramHandle: dto.instagramHandle, website: dto.website,
@@ -85,6 +94,80 @@ final class CachedPlace {
     }
 
     var isPermanentlyClosed: Bool { businessStatus == "CLOSED_PERMANENTLY" }
+
+    var hours: OpeningHours? {
+        hoursData.flatMap { try? JSONDecoder().decode(OpeningHours.self, from: $0) }
+    }
+
+    /// First Google photo, if any.
+    var firstPhotoURL: URL? { photos.first.flatMap { URL(string: $0) } }
+
+    func distanceMeters(from user: CLLocation?) -> Double? {
+        guard let user, let c = coordinate else { return nil }
+        return CLLocation(latitude: c.latitude, longitude: c.longitude).distance(from: user)
+    }
+
+    /// Live open/closed, evaluated in the venue's own timezone via its UTC offset.
+    /// nil when we don't have structured hours (e.g. Nominatim-only places).
+    var openStatus: (open: Bool, label: String)? {
+        guard let periods = hours?.periods, !periods.isEmpty, let offset = utcOffsetMinutes
+        else { return nil }
+        // "Now" at the venue: shift UTC by the venue's offset, then read wall clock.
+        let venueNow = Date().addingTimeInterval(Double(offset) * 60)
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let c = cal.dateComponents([.weekday, .hour, .minute], from: venueNow)
+        let gDay = ((c.weekday ?? 1) - 1)  // Swift 1=Sun → Google 0=Sun
+        let nowMin = gDay * 1440 + (c.hour ?? 0) * 60 + (c.minute ?? 0)
+
+        for p in periods {
+            guard let o = p.open else { continue }
+            let openMin = o.day * 1440 + o.hour * 60 + o.minute
+            guard let cl = p.close else { return (true, "Open 24 hours") }
+            var closeMin = cl.day * 1440 + cl.hour * 60 + cl.minute
+            if closeMin <= openMin { closeMin += 7 * 1440 }  // spans midnight/week end
+            for shifted in [nowMin, nowMin + 7 * 1440] where shifted >= openMin && shifted < closeMin {
+                return (true, "Open · closes \(Self.clockLabel(closeMin % (7 * 1440)))")
+            }
+        }
+        // Closed → soonest upcoming opening.
+        var next: Int?
+        for p in periods {
+            guard let o = p.open else { continue }
+            let base = o.day * 1440 + o.hour * 60 + o.minute
+            for s in [base, base + 7 * 1440] where s >= nowMin {
+                next = min(next ?? .max, s)
+            }
+        }
+        if let n = next { return (false, "Closed · opens \(Self.clockLabel(n % (7 * 1440)))") }
+        return (false, "Closed")
+    }
+
+    private static func clockLabel(_ minuteOfWeek: Int) -> String {
+        let m = minuteOfWeek % 1440
+        var h = m / 60
+        let mm = m % 60
+        let ap = h < 12 ? "AM" : "PM"
+        h %= 12; if h == 0 { h = 12 }
+        return mm == 0 ? "\(h) \(ap)" : String(format: "%d:%02d %@", h, mm, ap)
+    }
+}
+
+/// Local-only per-place state (visited toggle + personal note). Kept in its own
+/// model so `Syncer`'s delete-and-replace of CachedPlace never wipes it.
+@Model
+final class PlaceMark {
+    @Attribute(.unique) var placeID: String
+    var visited: Bool
+    var note: String
+    var updatedAt: Date
+
+    init(placeID: String, visited: Bool = false, note: String = "", updatedAt: Date = .now) {
+        self.placeID = placeID
+        self.visited = visited
+        self.note = note
+        self.updatedAt = updatedAt
+    }
 }
 
 @Model

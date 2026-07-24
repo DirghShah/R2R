@@ -98,6 +98,7 @@ class Place(Base):
     price_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     photos: Mapped[list | None] = mapped_column(JSON, nullable=True)
     hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    utc_offset_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
     business_status: Mapped[str | None] = mapped_column(String, nullable=True)
     google_maps_url: Mapped[str | None] = mapped_column(String, nullable=True)

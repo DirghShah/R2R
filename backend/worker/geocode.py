@@ -35,7 +35,7 @@ _TEXT_FIELD_MASK = ",".join([
 _DETAILS_FIELD_MASK = ",".join([
     "id", "displayName", "formattedAddress", "location", "rating",
     "userRatingCount", "priceLevel", "businessStatus", "nationalPhoneNumber",
-    "regularOpeningHours", "googleMapsUri", "photos",
+    "regularOpeningHours", "utcOffsetMinutes", "googleMapsUri", "photos",
 ])
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 
@@ -52,6 +52,7 @@ class GeocodeResult:
     price_level: int | None = None
     photos: list[str] = field(default_factory=list)
     hours: dict | None = None
+    utc_offset_minutes: int | None = None
     phone: str | None = None
     business_status: str | None = None
     google_maps_url: str | None = None
@@ -296,6 +297,7 @@ def _places_details(place_id: str, place) -> GeocodeResult:
         price_level=_PRICE_LEVELS.get(d.get("priceLevel")),
         photos=photos,
         hours=d.get("regularOpeningHours"),
+        utc_offset_minutes=d.get("utcOffsetMinutes"),
         phone=d.get("nationalPhoneNumber"),
         business_status=d.get("businessStatus"),
         google_maps_url=d.get("googleMapsUri"),
