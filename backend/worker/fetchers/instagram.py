@@ -46,6 +46,7 @@ class InstagramFetcher:
             at_handles=collect_handles(item, caption),
             tagged_location=location_name(item),
             hashtags=normalize_hashtags(item.get("hashtags"), caption),
+            raw=item,
         )
 
 

@@ -27,6 +27,10 @@ class ReelData:
     at_handles: list[str] = field(default_factory=list)
     tagged_location: str | None = None
     hashtags: list[str] = field(default_factory=list)
+    # The untouched actor/scraper payload, kept only for the debug/verification
+    # harness (worker.cli --raw). The pipeline ignores it; it's discarded with
+    # the job. `repr=False` keeps it out of normal logging.
+    raw: dict = field(default_factory=dict, repr=False)
 
 
 class ReelFetcher(Protocol):

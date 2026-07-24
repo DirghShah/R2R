@@ -46,4 +46,5 @@ class TikTokFetcher:
             at_handles=collect_handles(item, caption),
             tagged_location=first_value(item, "locationCreated", "locationName"),
             hashtags=normalize_hashtags(item.get("hashtags"), caption),
+            raw=item,
         )

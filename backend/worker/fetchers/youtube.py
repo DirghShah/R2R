@@ -33,4 +33,5 @@ class YouTubeFetcher:
             at_handles=collect_handles(item, caption),
             tagged_location=None,
             hashtags=normalize_hashtags(item.get("hashtags"), caption),
+            raw=item,
         )
