@@ -28,19 +28,21 @@ final class ShareViewController: UIViewController {
         guard let raw = await extractSharedText(),
               let link = LinkValidator.firstSupportedLink(in: raw) else {
             state.phase = .unsupported
-            return finish(after: 1.4)
+            return finish(after: 1.6)
         }
         do {
             // Submit under the shared session; the reel now appears in the
             // user's activity feed (GET /reels), which the app polls on open.
             _ = try await APIClient.shared.submitReel(url: link)
             state.phase = .saved
+            finish(after: 0.9)
         } catch {
-            // Offline or backend unreachable — hand off to the main app.
+            // Keep the link either way — the app drains this queue on next open.
             PendingQueue.enqueue(link)
-            state.phase = .queued
+            // Be honest about *why* it didn't go through.
+            state.phase = (error as? APIError)?.isNetwork == true ? .offline : .failed
+            finish(after: 2.0)
         }
-        finish(after: 1.0)
     }
 
     /// Shared payloads arrive as URL or plain-text items depending on the app.
@@ -74,7 +76,7 @@ final class ShareViewController: UIViewController {
 
 @MainActor
 final class ShareState: ObservableObject {
-    enum Phase { case working, saved, queued, unsupported }
+    enum Phase { case working, saved, offline, failed, unsupported }
     @Published var phase: Phase = .working
 }
 
@@ -82,29 +84,40 @@ private struct ShareConfirmView: View {
     @ObservedObject var state: ShareState
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             switch state.phase {
             case .working:
                 ProgressView()
                 Text("Saving to ReelMap…").font(.headline)
             case .saved:
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.largeTitle).foregroundStyle(.green)
+                icon("checkmark.circle.fill", .green)
                 Text("Analyzing — pins coming up").font(.headline)
-            case .queued:
-                Image(systemName: "tray.and.arrow.down.fill")
-                    .font(.largeTitle).foregroundStyle(.secondary)
-                Text("Saved — will analyze when you open ReelMap").font(.headline)
+            case .offline:
+                icon("wifi.slash", .orange)
+                Text("Can't reach ReelMap").font(.headline)
+                Text("Network lost. Saved — it'll upload when your phone can reach the backend again.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .failed:
+                icon("exclamationmark.triangle.fill", .orange)
+                Text("Couldn't save that reel").font(.headline)
+                Text("Saved to retry — open ReelMap once the backend is reachable.")
+                    .font(.subheadline).foregroundStyle(.secondary)
             case .unsupported:
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.largeTitle).foregroundStyle(.orange)
-                Text("Share an Instagram, TikTok, or YouTube link").font(.headline)
+                icon("link.badge.plus", .orange)
+                Text("Unsupported link").font(.headline)
+                Text("Share an Instagram, TikTok, or YouTube link.")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
         }
         .multilineTextAlignment(.center)
         .padding(28)
+        .frame(maxWidth: 320)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func icon(_ name: String, _ color: Color) -> some View {
+        Image(systemName: name).font(.largeTitle).foregroundStyle(color)
     }
 }

@@ -4,6 +4,9 @@ public struct APIError: Error, LocalizedError {
     public let status: Int
     public let message: String
     public var errorDescription: String? { message }
+    /// True for connectivity failures (no HTTP response reached us), as opposed
+    /// to a server-side status code. Lets the Share Extension say "network lost".
+    public var isNetwork: Bool { status <= 0 }
 }
 
 /// Thin async/await client for the ReelMap backend. Used by both the app and
@@ -125,9 +128,21 @@ public actor APIClient {
         if authed, let token = AuthStore.token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, resp) = try await session.data(for: req)
+        let data: Data
+        let resp: URLResponse
+        do {
+            (data, resp) = try await session.data(for: req)
+        } catch let e as URLError {
+            // "The network connection was lost" (-1005) & friends are frequently
+            // transient against a LAN dev server — retry once, then report honestly.
+            if Self.isTransient(e.code), !isRetry {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                return try await perform(path, method: method, body: body, authed: authed, isRetry: true)
+            }
+            throw APIError(status: -1, message: Self.networkMessage(e.code))
+        }
         guard let http = resp as? HTTPURLResponse else {
-            throw APIError(status: -1, message: "No response")
+            throw APIError(status: -1, message: "No response from ReelMap.")
         }
         // Self-heal a stale/expired session (e.g. the DB was reset but the old
         // token is still cached): clear it, re-acquire a session, retry once.
@@ -153,6 +168,21 @@ public actor APIClient {
             return env.detail
         }
         return "Something went wrong. Please try again."
+    }
+
+    private static func isTransient(_ code: URLError.Code) -> Bool {
+        [.networkConnectionLost, .timedOut, .cannotConnectToHost].contains(code)
+    }
+
+    private static func networkMessage(_ code: URLError.Code) -> String {
+        switch code {
+        case .notConnectedToInternet: return "You're offline."
+        case .networkConnectionLost:  return "Network lost — can't reach the ReelMap backend."
+        case .timedOut:               return "ReelMap didn't respond. Is the backend running on the same Wi-Fi?"
+        case .cannotConnectToHost, .cannotFindHost:
+            return "Can't reach the ReelMap backend at this address."
+        default:                      return "Network error — can't reach ReelMap."
+        }
     }
 }
 
