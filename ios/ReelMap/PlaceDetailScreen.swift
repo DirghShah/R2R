@@ -83,6 +83,9 @@ struct PlaceDetailScreen: View {
                 HStack(spacing: 6) {
                     Image(systemName: "star.fill").font(.system(size: 14)).foregroundStyle(.starGold)
                     Text(String(format: "%.1f", r)).font(.display(16, .bold)).foregroundStyle(.ink)
+                    if let n = place.reviewCount, n > 0 {
+                        Text("(\(n.formatted()))").font(.system(size: 12)).foregroundStyle(.inkSecondary)
+                    }
                 }
                 .padding(.horizontal, 13).padding(.vertical, 9).card(14)
             }
@@ -90,7 +93,11 @@ struct PlaceDetailScreen: View {
                 Text(price).font(.system(size: 15, weight: .semibold)).foregroundStyle(.ink)
                     .padding(.horizontal, 13).padding(.vertical, 9).card(14)
             }
-            if let h = place.hoursHint {
+            if place.isPermanentlyClosed {
+                Text("Permanently closed").font(.system(size: 13, weight: .semibold)).foregroundStyle(.closedRed)
+                    .padding(.horizontal, 13).padding(.vertical, 9)
+                    .background(Color(hex: 0xFBEBE7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else if let h = place.hoursHint {
                 Text(h).font(.system(size: 13, weight: .semibold)).foregroundStyle(.appAccent)
                     .padding(.horizontal, 13).padding(.vertical, 9)
                     .background(Color(hex: 0xEAF5EF), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -204,7 +211,8 @@ struct PlaceDetailScreen: View {
     private var infoRows: [InfoRow] {
         var rows: [InfoRow] = []
         if let h = place.hoursHint { rows.append(.init(icon: "clock", label: "Hours", value: h)) }
-        if let a = place.address ?? place.city { rows.append(.init(icon: "mappin.and.ellipse", label: "Area", value: a)) }
+        if let a = place.address ?? place.city { rows.append(.init(icon: "mappin.and.ellipse", label: "Address", value: a)) }
+        if let phone = place.phone { rows.append(.init(icon: "phone", label: "Phone", value: phone)) }
         if let handle = place.instagramHandle { rows.append(.init(icon: "camera", label: "Instagram", value: "@\(handle)", link: true)) }
         if let site = place.website {
             let clean = site.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
@@ -244,6 +252,12 @@ struct PlaceDetailScreen: View {
     }
 
     private func openGoogleMaps() {
+        // Prefer the exact place URL Google gave us — it opens the resolved
+        // listing (reviews, hours, photos) rather than a name search.
+        if let s = place.googleMapsURL, let url = URL(string: s) {
+            UIApplication.shared.open(url)
+            return
+        }
         guard let lat = place.lat, let lng = place.lng else { return }
         let q = place.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let app = URL(string: "comgooglemaps://?q=\(q)&center=\(lat),\(lng)")!

@@ -20,6 +20,11 @@ app.include_router(places_router.router)
 # (create_all only creates missing tables, it never ALTERs existing ones).
 _DEV_MIGRATIONS = [
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS cuisine VARCHAR",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS review_count INTEGER",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS phone VARCHAR",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS business_status VARCHAR",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS google_maps_url VARCHAR",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ",
 ]
 
 

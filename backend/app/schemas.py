@@ -39,8 +39,12 @@ class PlaceOut(BaseModel):
     lng: float | None = None
     address: str | None = None
     rating: float | None = None
+    review_count: int | None = None
     price_level: int | None = None
     photos: list | None = None
+    phone: str | None = None
+    business_status: str | None = None
+    google_maps_url: str | None = None
 
 
 class UserPlaceOut(BaseModel):

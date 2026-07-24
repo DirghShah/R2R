@@ -12,6 +12,7 @@ filters `coordinate != nil`, CityListsScreen shows everything.
 """
 from __future__ import annotations
 
+import difflib
 import logging
 from dataclasses import dataclass, field
 
@@ -21,9 +22,21 @@ from app.config import settings
 
 log = logging.getLogger(__name__)
 
-_GOOGLE_TEXT = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-_GOOGLE_DETAILS = "https://maps.googleapis.com/maps/api/place/details/json"
-_GOOGLE_PHOTO = "https://maps.googleapis.com/maps/api/place/photo"
+# Places API (New) — field masks pick the billing tier, so we do TWO steps:
+# a cheap Pro-tier Text Search to find + score candidates, then an Enterprise
+# Place Details ONLY on the accepted one (rating/reviews/hours/photos/phone).
+_PLACES_TEXT = "https://places.googleapis.com/v1/places:searchText"
+_PLACES_DETAILS = "https://places.googleapis.com/v1/places/{place_id}"
+_PLACES_MEDIA = "https://places.googleapis.com/v1/{photo_name}/media"
+_TEXT_FIELD_MASK = ",".join([
+    "places.id", "places.displayName", "places.formattedAddress",
+    "places.location", "places.types", "places.primaryType", "places.businessStatus",
+])
+_DETAILS_FIELD_MASK = ",".join([
+    "id", "displayName", "formattedAddress", "location", "rating",
+    "userRatingCount", "priceLevel", "businessStatus", "nationalPhoneNumber",
+    "regularOpeningHours", "googleMapsUri", "photos",
+])
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 
 
@@ -35,9 +48,13 @@ class GeocodeResult:
     external_place_id: str | None = None
     address: str | None = None
     rating: float | None = None
+    review_count: int | None = None
     price_level: int | None = None
     photos: list[str] = field(default_factory=list)
     hours: dict | None = None
+    phone: str | None = None
+    business_status: str | None = None
+    google_maps_url: str | None = None
     city: str | None = None
     country: str | None = None
 
@@ -70,13 +87,18 @@ def geocode(place, address_hint: str | None = None) -> GeocodeResult:
         return GeocodeResult(name=place.name, city=getattr(place, "city", None),
                              country=getattr(place, "country", None))
 
-    if address_hint:
+    use_google = settings.geocoder == "google" and settings.google_places_api_key
+
+    # A precise platform address: in Google mode we fold it into the query (so we
+    # still get ratings/photos for the right place); in free mode we geocode it
+    # directly via Nominatim.
+    if address_hint and not use_google:
         precise = _nominatim_address(address_hint, place)
         if precise is not None:
             return precise
 
-    if settings.geocoder == "google" and settings.google_places_api_key:
-        result = _google(place)
+    if use_google:
+        result = _google(place, address_hint)
     else:
         result = _nominatim(place)
 
@@ -114,60 +136,171 @@ def _nominatim_address(address: str, place) -> GeocodeResult | None:
     )
 
 
-def _google_query(place) -> str:
-    """For Google: the @handle (un-slugged) is a strong search signal."""
-    if place.instagram_handle:
+def _google_query(place, address_hint: str | None = None) -> str:
+    """Best text query for Places search. A precise address (TikTok locationMeta)
+    pins the exact venue; otherwise fall back to name + neighborhood + city, or
+    the @handle when there's no clean name."""
+    if address_hint:
+        return f"{place.name}, {address_hint}"
+    base = place.name
+    if place.instagram_handle and not is_real_place_name(place.name):
         base = place.instagram_handle.replace("_", " ").replace(".", " ")
-    else:
-        base = place.name
     parts = [base, place.neighborhood, place.city, getattr(place, "country", None)]
     return ", ".join(p for p in parts if p)
 
 
-def _google(place) -> GeocodeResult:
-    key = settings.google_places_api_key
-    query = _google_query(place)
-    r = httpx.get(_GOOGLE_TEXT, params={"query": query, "key": key}, timeout=30)
-    r.raise_for_status()
-    results = r.json().get("results") or []
-    if not results:
-        return GeocodeResult(name=place.name, city=place.city, country=getattr(place, "country", None))
+# Map our AI categories onto Google place types for the category-match score.
+_CATEGORY_TYPES = {
+    "cafe": {"cafe", "coffee_shop"},
+    "restaurant": {"restaurant", "meal_takeaway", "meal_delivery", "brunch_restaurant", "breakfast_restaurant"},
+    "bar": {"bar", "pub", "wine_bar"},
+    "club": {"night_club"},
+    "hotel": {"lodging", "hotel", "resort_hotel"},
+    "sight": {"tourist_attraction", "museum", "park", "art_gallery", "landmark"},
+    "event": {"event_venue", "performing_arts_theater"},
+}
+_GENERIC_TYPES = {"food", "point_of_interest", "establishment", "store"}
 
-    top = results[0]
-    place_id = top.get("place_id")
-    details: dict = {}
-    if place_id:
-        d = httpx.get(
-            _GOOGLE_DETAILS,
-            params={
-                "place_id": place_id,
-                "key": key,
-                "fields": "name,formatted_address,geometry,rating,price_level,photos,opening_hours,address_components",
+
+def _norm_join(text: str | None) -> str:
+    return " ".join(
+        t for t in "".join(ch.lower() if ch.isalnum() else " " for ch in (text or "")).split()
+    )
+
+
+def _score_candidate(place, cand: dict) -> float:
+    """Weighted match score in [0,1]. Protects against Google's top result being
+    the wrong venue/branch: name similarity + locality + category + neighborhood.
+    """
+    disp = (cand.get("displayName") or {}).get("text") or ""
+    addr = (cand.get("formattedAddress") or "").lower()
+    types = set(cand.get("types") or [])
+    if cand.get("primaryType"):
+        types.add(cand["primaryType"])
+
+    # name (0.40) — sequence ratio against the display name, best of name/handle
+    name_score = difflib.SequenceMatcher(None, _norm_join(place.name), _norm_join(disp)).ratio()
+    if place.instagram_handle:
+        h = _norm_join(place.instagram_handle.replace("_", " ").replace(".", " "))
+        name_score = max(name_score, difflib.SequenceMatcher(None, h, _norm_join(disp)).ratio())
+
+    # locality (0.30) — is the candidate in the expected city / neighborhood?
+    loc_score = 0.3
+    if place.city and place.city.lower() in addr:
+        loc_score = 0.8
+    in_neighborhood = bool(place.neighborhood and place.neighborhood.lower() in addr)
+    if in_neighborhood:
+        loc_score = 1.0
+
+    # category (0.15)
+    want = _CATEGORY_TYPES.get(place.category, set())
+    cat_score = 1.0 if (types & want) else (0.5 if (types & _GENERIC_TYPES) else 0.0)
+
+    # branch/neighborhood (0.15) — the discriminator for chains with many locations
+    branch_score = 1.0 if in_neighborhood else 0.5
+
+    return 0.40 * name_score + 0.30 * loc_score + 0.15 * cat_score + 0.15 * branch_score
+
+
+def _google(place, address_hint: str | None = None) -> GeocodeResult:
+    unpinned = GeocodeResult(name=place.name, city=place.city, country=getattr(place, "country", None))
+    candidates = _places_text_search(place, address_hint)
+    if not candidates:
+        return unpinned
+
+    scored = sorted((( _score_candidate(place, c), c) for c in candidates),
+                    key=lambda sc: sc[0], reverse=True)
+    best_score, best = scored[0]
+    second = scored[1][0] if len(scored) > 1 else 0.0
+
+    if best_score < settings.place_min_score:
+        log.info("google: best match for %r scored %.2f (< %.2f) — no pin",
+                 place.name, best_score, settings.place_min_score)
+        return unpinned
+
+    confident = (best_score >= settings.place_auto_accept_threshold
+                 and (best_score - second) >= settings.place_min_margin_over_second)
+    log.info("google: %r -> %r score=%.2f margin=%.2f (%s)",
+             place.name, (best.get("displayName") or {}).get("text"),
+             best_score, best_score - second, "high" if confident else "medium")
+
+    return _places_details(best["id"], place)
+
+
+def _places_text_search(place, address_hint: str | None) -> list[dict]:
+    try:
+        r = httpx.post(
+            _PLACES_TEXT,
+            headers={
+                "X-Goog-Api-Key": settings.google_places_api_key,
+                "X-Goog-FieldMask": _TEXT_FIELD_MASK,
+                "Content-Type": "application/json",
+            },
+            json={
+                "textQuery": _google_query(place, address_hint),
+                "regionCode": settings.google_places_region,
+                "languageCode": settings.google_places_language,
+                "maxResultCount": 5,
             },
             timeout=30,
         )
-        d.raise_for_status()
-        details = d.json().get("result") or {}
+        r.raise_for_status()
+        return r.json().get("places") or []
+    except Exception:  # noqa: BLE001 - degrade to no pin
+        log.warning("google text search failed for %r", place.name, exc_info=True)
+        return []
 
-    loc = (details.get("geometry") or top.get("geometry") or {}).get("location") or {}
-    if "lat" not in loc:
-        return GeocodeResult(name=place.name, city=place.city, country=getattr(place, "country", None))
 
+_PRICE_LEVELS = {
+    "PRICE_LEVEL_FREE": 0, "PRICE_LEVEL_INEXPENSIVE": 1, "PRICE_LEVEL_MODERATE": 2,
+    "PRICE_LEVEL_EXPENSIVE": 3, "PRICE_LEVEL_VERY_EXPENSIVE": 4,
+}
+
+
+def _places_details(place_id: str, place) -> GeocodeResult:
+    unpinned = GeocodeResult(name=place.name, city=place.city, country=getattr(place, "country", None))
+    try:
+        r = httpx.get(
+            _PLACES_DETAILS.format(place_id=place_id),
+            headers={
+                "X-Goog-Api-Key": settings.google_places_api_key,
+                "X-Goog-FieldMask": _DETAILS_FIELD_MASK,
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        d = r.json()
+    except Exception:  # noqa: BLE001
+        log.warning("google details failed for %s", place_id, exc_info=True)
+        return unpinned
+
+    loc = d.get("location") or {}
+    lat, lng = loc.get("latitude"), loc.get("longitude")
+    if lat is None or lng is None:
+        return unpinned
+
+    key = settings.google_places_api_key
     photos = [
-        f"{_GOOGLE_PHOTO}?maxwidth=800&photo_reference={p['photo_reference']}&key={key}"
-        for p in (details.get("photos") or [])[:4]
-        if p.get("photo_reference")
+        f"{_PLACES_MEDIA.format(photo_name=p['name'])}?maxWidthPx=800&key={key}"
+        for p in (d.get("photos") or [])[:4]
+        if p.get("name")
     ]
     return GeocodeResult(
-        external_place_id=place_id,
-        name=details.get("name") or top.get("name") or place.name,
-        lat=loc["lat"],
-        lng=loc["lng"],
-        address=details.get("formatted_address") or top.get("formatted_address"),
-        rating=details.get("rating"),
-        price_level=details.get("price_level"),
+        external_place_id=f"gp:{d.get('id', place_id)}",
+        name=(d.get("displayName") or {}).get("text") or place.name,
+        lat=lat,
+        lng=lng,
+        address=d.get("formattedAddress"),
+        rating=d.get("rating"),
+        review_count=d.get("userRatingCount"),
+        price_level=_PRICE_LEVELS.get(d.get("priceLevel")),
         photos=photos,
-        hours=details.get("opening_hours"),
+        hours=d.get("regularOpeningHours"),
+        phone=d.get("nationalPhoneNumber"),
+        business_status=d.get("businessStatus"),
+        google_maps_url=d.get("googleMapsUri"),
+        city=place.city,
+        country=getattr(place, "country", None),
     )
 
 

@@ -131,7 +131,14 @@ def main(argv: list[str] | None = None) -> int:
                 geocoded.append({"name": ep.name, "error": str(exc)})
                 continue
             pin = f"{g.lat:.5f},{g.lng:.5f}" if g.lat is not None else "NO PIN"
-            _kv(ep.name, f"{pin}  rating={g.rating}  {g.address or ''}")
+            extra = []
+            if g.rating is not None:
+                extra.append(f"★{g.rating}" + (f"({g.review_count})" if g.review_count else ""))
+            if g.price_level:
+                extra.append("$" * g.price_level)
+            if g.business_status and g.business_status != "OPERATIONAL":
+                extra.append(g.business_status)
+            _kv(ep.name, f"{pin}  {' '.join(extra)}  {g.address or ''}")
             geocoded.append(dataclasses.asdict(g))
 
     # ---- Full structured extraction (stdout) ----------------------------

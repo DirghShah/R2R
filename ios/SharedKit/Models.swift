@@ -28,12 +28,19 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let lng: Double?
     public let address: String?
     public let rating: Double?
+    public let reviewCount: Int?
     public let priceLevel: Int?
     public let photos: [String]?
+    public let phone: String?
+    public let businessStatus: String?
+    public let googleMapsURL: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, category, cuisine, lat, lng, address, rating, photos
+        case id, name, category, cuisine, lat, lng, address, rating, photos, phone
+        case reviewCount = "review_count"
         case priceLevel = "price_level"
+        case businessStatus = "business_status"
+        case googleMapsURL = "google_maps_url"
     }
 }
 

@@ -43,8 +43,9 @@ def _log_metrics(reel: ReelSource, count: int, seconds: float,
                  in_tok: int, out_tok: int) -> dict:
     claude_cost = _claude_cost(settings.anthropic_model, in_tok, out_tok)
     apify_cost = settings.apify_cost_per_reel if settings.reel_fetcher == "apify" else 0.0
-    # Geocoding: nominatim is free; google would add ~$0.017/place (Text+Details).
-    geo_cost = 0.0 if settings.geocoder == "nominatim" else round(0.017 * count, 4)
+    # Geocoding: nominatim is free; google bills per accepted place (Text Search
+    # Pro + one Place Details Enterprise) — see settings.google_cost_per_place.
+    geo_cost = 0.0 if settings.geocoder == "nominatim" else round(settings.google_cost_per_place * count, 4)
     total = claude_cost + apify_cost + geo_cost
     summary = {
         "reel": reel.canonical_id,
@@ -179,9 +180,14 @@ def _upsert_place(db, ep, geo) -> Place:
     place.lng = geo.lng
     place.address = geo.address
     place.rating = geo.rating
+    place.review_count = geo.review_count
     place.price_level = geo.price_level
     place.photos = geo.photos or None
     place.hours = geo.hours
+    place.phone = geo.phone
+    place.business_status = geo.business_status
+    place.google_maps_url = geo.google_maps_url
+    place.last_verified_at = datetime.now(timezone.utc)
     place.city = city
     db.flush()
     return place

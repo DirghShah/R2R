@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # --- Geocoding ---
     google_places_api_key: str | None = None
     geocoder: str = "nominatim"  # nominatim (free, default) | google (photos/ratings)
+    google_places_region: str = "US"
+    google_places_language: str = "en"
+    # Candidate-scoring acceptance for Google Places: take the top match only when
+    # it scores well and clearly beats the runner-up; below the floor -> no pin
+    # (never auto-accept a bad first result).
+    place_auto_accept_threshold: float = 0.85
+    place_min_margin_over_second: float = 0.15
+    place_min_score: float = 0.55  # below this, leave un-pinned rather than mispin
+    # Rough $/place for the cost log (Text Search Pro + one Place Details Enterprise).
+    google_cost_per_place: float = 0.05
 
     # --- Transcription ---
     enable_transcription: bool = True
