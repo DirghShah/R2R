@@ -130,7 +130,14 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
     )
     reel.summary = result.extraction.overall_summary
 
-    places = result.extraction.places
+    # Drop places the model saw on-screen but couldn't name ("<UNKNOWN>") — they
+    # can't be pinned or looked up and only render as garbage in the app.
+    all_places = result.extraction.places
+    places = [ep for ep in all_places if geocode.is_real_place_name(ep.name)]
+    if len(places) < len(all_places):
+        log.info("reel %s: dropped %d un-nameable place(s)",
+                 reel.canonical_id, len(all_places) - len(places))
+
     # A precise platform address describes the reel's single tagged venue — only
     # trust it to pin when the reel is about one place (not a "10 cafes" list).
     single_venue_address = data.tagged_address if len(places) == 1 else None

@@ -42,6 +42,19 @@ class GeocodeResult:
     country: str | None = None
 
 
+_PLACEHOLDER_NAMES = {"unknown", "n/a", "na", "unnamed", "unknown place", ""}
+
+
+def is_real_place_name(name: str | None) -> bool:
+    """False for placeholder names a model emits when it can't read a venue's
+    name on-screen ('<UNKNOWN>', 'unknown', blank). Such names must never be
+    geocoded — the string 'unknown' happily matches a random hamlet upstate."""
+    if not name:
+        return False
+    n = name.strip().strip("<>").strip().lower()
+    return bool(n) and n not in _PLACEHOLDER_NAMES and "unknown" not in n
+
+
 def geocode(place, address_hint: str | None = None) -> GeocodeResult:
     """Always returns a GeocodeResult. lat/lng may be None if no match found.
 
@@ -50,6 +63,13 @@ def geocode(place, address_hint: str | None = None) -> GeocodeResult:
     the top hit — this avoids name-collision mispins (a "Café Luna" in the wrong
     borough) that plague venue-name-only lookups.
     """
+    # An un-nameable place can't be pinned — never geocode a placeholder like
+    # "<UNKNOWN>" (it matches garbage). Return it un-pinned.
+    if not is_real_place_name(place.name):
+        log.info("geocode: skipping un-nameable place %r", place.name)
+        return GeocodeResult(name=place.name, city=getattr(place, "city", None),
+                             country=getattr(place, "country", None))
+
     if address_hint:
         precise = _nominatim_address(address_hint, place)
         if precise is not None:

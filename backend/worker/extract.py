@@ -116,6 +116,12 @@ to geocode. Geocoding happens downstream; your job is to surface every place in 
 If the caption says "9 best cafes in Dallas" and lists 9 places with @handles, you MUST return \
 exactly 9 places.
 
+**Only output places you can NAME.** Completeness means every *nameable* place. If a venue appears \
+on-screen but you cannot read its actual name from any signal (caption, tags, or legible on-screen \
+text), OMIT it entirely — do not invent a name and never emit a placeholder like "Unknown", \
+"<UNKNOWN>", "Cafe", or a description in the `name` field. An unnamed place cannot be pinned and is \
+worse than leaving it out.
+
 ## Signal fusion rules
 
 - **Merge** all signals. A name seen on-screen confirmed by an @tag or caption item is one place.
