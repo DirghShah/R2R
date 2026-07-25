@@ -179,6 +179,7 @@ def _upsert_place(db, ep, geo) -> Place:
     place.lat = geo.lat
     place.lng = geo.lng
     place.address = geo.address
+    place.region = geo.region or geocode.region_from_address(geo.address)
     place.rating = geo.rating
     place.review_count = geo.review_count
     place.price_level = geo.price_level

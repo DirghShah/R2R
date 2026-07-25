@@ -76,3 +76,42 @@ def test_extraction_schema_has_country_fields():
 
     assert "country" in ExtractedPlace.model_fields
     assert "primary_country" in ReelExtraction.model_fields
+
+
+@pytest.mark.parametrize(
+    "address,expected",
+    [
+        ("133 Duane St, New York, NY 10013, USA", "NY"),
+        ("1023 E Trinity Mills Rd, Carrollton, TX 75006, USA", "TX"),
+        ("100 Queen St W, Toronto, ON M5H 2N2, Canada", "ON"),
+        ("Dallas, TX", "TX"),
+        # International formats must yield nothing rather than a wrong label.
+        ("5 Rue de Rivoli, 75001 Paris, France", None),
+        ("Shibuya City, Tokyo 150-0002, Japan", None),
+        ("Somewhere", None),
+        (None, None),
+    ],
+)
+def test_region_from_address(address, expected):
+    from worker.geocode import region_from_address
+
+    assert region_from_address(address) == expected
+
+
+def test_region_from_google_components():
+    from worker.geocode import _region_from_components
+
+    components = [
+        {"longText": "New York", "shortText": "New York", "types": ["locality"]},
+        {"longText": "New York", "shortText": "NY", "types": ["administrative_area_level_1"]},
+    ]
+    assert _region_from_components(components) == "NY"
+    assert _region_from_components(None) is None
+
+
+def test_region_from_osm_prefers_iso_subdivision():
+    from worker.geocode import _region_from_osm
+
+    assert _region_from_osm({"address": {"state": "Texas", "ISO3166-2-lvl4": "US-TX"}}) == "TX"
+    # No ISO code and a verbose state name -> no label (better than "Texas, TX")
+    assert _region_from_osm({"address": {"state": "Bavaria"}}) is None

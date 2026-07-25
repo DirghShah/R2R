@@ -22,30 +22,32 @@ struct PlaceDetailScreen: View {
     private var hasCoords: Bool { place.coordinate != nil }
 
     var body: some View {
-        ZStack {
-            Color.clear.onTapGesture { isNotesFocused = false }
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    hero
-                    VStack(alignment: .leading, spacing: 14) {
-                        badgeRow
-                        if let s = place.summary, !s.isEmpty {
-                            Text(s).font(.system(size: 15)).foregroundStyle(.ink).lineSpacing(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if !place.tips.isEmpty { tipsCard }
-                        if !place.whatToOrder.isEmpty { orderCard }
-                        infoCard
-                        visitedCard
-                        sourcedFrom
-                        actions
+        ScrollView {
+            VStack(spacing: 0) {
+                hero
+                VStack(alignment: .leading, spacing: 14) {
+                    badgeRow
+                    if let s = place.summary, !s.isEmpty {
+                        Text(s).font(.system(size: 15)).foregroundStyle(.ink).lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 34)
+                    if !place.tips.isEmpty { tipsCard }
+                    if !place.whatToOrder.isEmpty { orderCard }
+                    infoCard
+                    visitedCard
+                    sourcedFrom
+                    actions
                 }
+                .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 34)
             }
-            .scrollIndicators(.hidden)
+            // Tap anywhere that isn't a control to dismiss the notes keyboard —
+            // buttons and the field itself still win, since child gestures take
+            // precedence over a container's tap.
+            .contentShape(Rectangle())
+            .onTapGesture { isNotesFocused = false }
         }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
         .background(Color.canvas)
         .presentationDetents(detents)
         .presentationDragIndicator(.visible)
@@ -115,7 +117,7 @@ struct PlaceDetailScreen: View {
 
     private var shareText: String {
         var parts = [place.name]
-        if let a = place.address ?? place.city { parts.append(a) }
+        if let a = place.address ?? place.cityLabel { parts.append(a) }
         if let g = place.googleMapsURL { parts.append(g) }
         else if let r = place.reelURL { parts.append(r) }
         return parts.joined(separator: "\n")
@@ -201,21 +203,45 @@ struct PlaceDetailScreen: View {
         if !rows.isEmpty {
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
-                    HStack(spacing: 12) {
-                        Image(systemName: row.icon).font(.system(size: 17)).foregroundStyle(.inkMuted).frame(width: 20)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(row.label).font(.system(size: 13)).foregroundStyle(.secondary)
-                            Text(row.value).font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(row.link ? .linkBlue : .primary).lineLimit(1)
-                        }
-                        Spacer()
-                    }
-                    .padding(.vertical, 13)
-                    .overlay(alignment: .top) { if i > 0 { Rectangle().fill(Color.hairline).frame(height: 1) } }
+                    infoRowView(row)
+                        .padding(.vertical, 13)
+                        .overlay(alignment: .top) { if i > 0 { Rectangle().fill(Color.hairline).frame(height: 1) } }
                 }
             }
             .padding(.horizontal, 16).card(20)
         }
+    }
+
+    /// Rows carrying a destination open it on tap; the rest are plain text.
+    @ViewBuilder private func infoRowView(_ row: InfoRow) -> some View {
+        if let destination = row.destination {
+            Button {
+                Haptics.tap()
+                open(destination)
+            } label: {
+                infoRowBody(row)
+            }
+            .buttonStyle(.plain)
+        } else {
+            infoRowBody(row)
+        }
+    }
+
+    private func infoRowBody(_ row: InfoRow) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: row.icon).font(.system(size: 17))
+                .foregroundStyle(row.destination == nil ? Color.inkMuted : .linkBlue).frame(width: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.label).font(.system(size: 13)).foregroundStyle(.secondary)
+                Text(row.value).font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(row.destination == nil ? Color.primary : .linkBlue).lineLimit(1)
+            }
+            Spacer()
+            if row.destination != nil {
+                Image(systemName: "arrow.up.right").font(.system(size: 12, weight: .bold)).foregroundStyle(.inkMuted)
+            }
+        }
+        .contentShape(Rectangle())
     }
 
     private var sourcedFrom: some View {
@@ -273,6 +299,16 @@ struct PlaceDetailScreen: View {
                 TextField("Add a private note…", text: $note, axis: .vertical)
                     .font(.system(size: 14)).foregroundStyle(.ink).lineLimit(1...4)
                     .focused($isNotesFocused)
+                    .onChange(of: isNotesFocused) { _, focused in if !focused { persistMark() } }
+                    // A multiline field has no return key to dismiss with, so
+                    // give the keyboard an explicit way out too.
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { isNotesFocused = false; persistMark() }
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                    }
             }
         }
         .padding(16).card(20)
@@ -311,18 +347,67 @@ struct PlaceDetailScreen: View {
         .padding(16).card(20)
     }
 
-    private struct InfoRow { let icon: String; let label: String; let value: String; var link = false }
+    /// `destination` is the app URL to open on tap (with `web` as the fallback
+    /// when the native app isn't installed); nil makes the row plain text.
+    private struct InfoRow {
+        let icon: String
+        let label: String
+        let value: String
+        var destination: Destination? = nil
+    }
+
+    private struct Destination { let primary: URL; var fallback: URL? = nil }
+
     private var infoRows: [InfoRow] {
         var rows: [InfoRow] = []
         if let h = place.hoursHint { rows.append(.init(icon: "clock", label: "Hours", value: h)) }
-        if let a = place.address ?? place.city { rows.append(.init(icon: "mappin.and.ellipse", label: "Address", value: a)) }
-        if let phone = place.phone { rows.append(.init(icon: "phone", label: "Phone", value: phone)) }
-        if let handle = place.instagramHandle { rows.append(.init(icon: "camera", label: "Instagram", value: "@\(handle)", link: true)) }
+        if let a = place.address ?? place.cityLabel { rows.append(.init(icon: "mappin.and.ellipse", label: "Address", value: a)) }
+        if let phone = place.phone {
+            let digits = phone.filter { $0.isNumber || $0 == "+" }
+            rows.append(.init(icon: "phone", label: "Phone", value: phone,
+                              destination: URL(string: "tel://\(digits)").map { Destination(primary: $0) }))
+        }
+        if let handle = place.instagramHandle {
+            let clean = handle.trimmingCharacters(in: CharacterSet(charactersIn: "@ "))
+            rows.append(.init(icon: "camera", label: "Instagram", value: "@\(clean)",
+                              destination: instagramDestination(clean)))
+        }
         if let site = place.website {
             let clean = site.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
-            rows.append(.init(icon: "globe", label: "Website", value: clean, link: true))
+            rows.append(.init(icon: "globe", label: "Website", value: clean,
+                              destination: websiteURL(site).map { Destination(primary: $0) }))
         }
         return rows
+    }
+
+    /// Deep-link into the Instagram app when it's installed, else the profile page.
+    private func instagramDestination(_ handle: String) -> Destination? {
+        guard !handle.isEmpty,
+              let web = URL(string: "https://www.instagram.com/\(handle)/")
+        else { return nil }
+        guard let app = URL(string: "instagram://user?username=\(handle)") else {
+            return Destination(primary: web)
+        }
+        return Destination(primary: app, fallback: web)
+    }
+
+    /// The AI sometimes returns a bare host ("saaqinyc.com") — add the scheme so
+    /// it opens instead of being treated as a relative path.
+    private func websiteURL(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+            return URL(string: trimmed)
+        }
+        return URL(string: "https://\(trimmed)")
+    }
+
+    private func open(_ destination: Destination) {
+        if UIApplication.shared.canOpenURL(destination.primary) {
+            UIApplication.shared.open(destination.primary)
+        } else if let fallback = destination.fallback {
+            UIApplication.shared.open(fallback)
+        }
     }
 
     private var sourceLabel: String {

@@ -42,6 +42,8 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let lat: Double?
     public let lng: Double?
     public let address: String?
+    /// State/province short code ("TX", "NY") when the geocoder knew one.
+    public let region: String?
     public let rating: Double?
     public let reviewCount: Int?
     public let priceLevel: Int?
@@ -53,7 +55,7 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let googleMapsURL: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, category, cuisine, lat, lng, address, rating, photos, phone, hours
+        case id, name, category, cuisine, lat, lng, address, region, rating, photos, phone, hours
         case reviewCount = "review_count"
         case priceLevel = "price_level"
         case utcOffsetMinutes = "utc_offset_minutes"

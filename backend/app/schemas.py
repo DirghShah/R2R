@@ -38,6 +38,7 @@ class PlaceOut(BaseModel):
     lat: float | None = None
     lng: float | None = None
     address: str | None = None
+    region: str | None = None
     rating: float | None = None
     review_count: int | None = None
     price_level: int | None = None

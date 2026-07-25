@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.config import settings
 from app.db import Base, engine
@@ -26,6 +26,7 @@ _DEV_MIGRATIONS = [
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS google_maps_url VARCHAR",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS utc_offset_minutes INTEGER",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS region VARCHAR",
 ]
 
 
@@ -42,6 +43,27 @@ def _startup() -> None:
                 conn.execute(text(stmt))
         except Exception:  # noqa: BLE001 - already applied / unsupported dialect
             pass
+    _backfill_regions()
+
+
+def _backfill_regions() -> None:
+    """Fill `region` for places saved before the column existed, parsing the
+    state out of their stored address. Cheap, idempotent, no API calls."""
+    from sqlalchemy.orm import Session
+
+    from app.models import Place
+    from worker.geocode import region_from_address
+
+    try:
+        with Session(engine) as db:
+            rows = db.scalars(
+                select(Place).where(Place.region.is_(None), Place.address.is_not(None))
+            ).all()
+            for p in rows:
+                p.region = region_from_address(p.address)
+            db.commit()
+    except Exception:  # noqa: BLE001 - never block boot on a best-effort backfill
+        pass
 
 
 @app.get("/health")

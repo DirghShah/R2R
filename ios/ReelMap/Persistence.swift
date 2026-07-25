@@ -16,6 +16,7 @@ final class CachedPlace {
     var lat: Double?
     var lng: Double?
     var address: String?
+    var region: String?
     var rating: Double?
     var reviewCount: Int?
     var priceLevel: Int?
@@ -39,7 +40,7 @@ final class CachedPlace {
 
     init(
         id: String, name: String, category: String, cuisine: String? = nil,
-        lat: Double?, lng: Double?, address: String?, rating: Double?,
+        lat: Double?, lng: Double?, address: String?, region: String? = nil, rating: Double?,
         reviewCount: Int? = nil, priceLevel: Int? = nil, phone: String? = nil,
         businessStatus: String? = nil, googleMapsURL: String? = nil,
         photos: [String] = [], hoursData: Data? = nil, utcOffsetMinutes: Int? = nil,
@@ -49,7 +50,8 @@ final class CachedPlace {
         priceLevelAI: Int?, city: String?, savedAt: Date
     ) {
         self.id = id; self.name = name; self.category = category; self.cuisine = cuisine
-        self.lat = lat; self.lng = lng; self.address = address; self.rating = rating
+        self.lat = lat; self.lng = lng; self.address = address; self.region = region
+        self.rating = rating
         self.reviewCount = reviewCount; self.priceLevel = priceLevel; self.phone = phone
         self.businessStatus = businessStatus; self.googleMapsURL = googleMapsURL
         self.photos = photos; self.hoursData = hoursData; self.utcOffsetMinutes = utcOffsetMinutes
@@ -65,6 +67,7 @@ final class CachedPlace {
             id: dto.id, name: dto.place.name, category: dto.place.category,
             cuisine: dto.place.cuisine,
             lat: dto.place.lat, lng: dto.place.lng, address: dto.place.address,
+            region: dto.place.region,
             rating: dto.place.rating, reviewCount: dto.place.reviewCount,
             priceLevel: dto.place.priceLevel, phone: dto.place.phone,
             businessStatus: dto.place.businessStatus, googleMapsURL: dto.place.googleMapsURL,
@@ -80,6 +83,45 @@ final class CachedPlace {
     }
 
     var categoryEnum: PlaceCategory { PlaceCategory(rawValue: category) ?? .other }
+
+    /// "Dallas, TX" — the state comes from the geocoder, falling back to a parse
+    /// of the stored address so places saved before the backend tracked regions
+    /// still label correctly. nil when we don't even know the city.
+    var cityLabel: String? {
+        guard let city = city?.trimmingCharacters(in: .whitespaces), !city.isEmpty else { return nil }
+        // Skip only when the city already *is* the code or already carries it —
+        // a substring test would eat legitimate pairs like "Ontario, ON".
+        guard let code = regionCode,
+              city.caseInsensitiveCompare(code) != .orderedSame,
+              !city.lowercased().hasSuffix(", \(code.lowercased())")
+        else { return city }
+        return "\(city), \(code)"
+    }
+
+    var regionCode: String? {
+        if let r = region?.trimmingCharacters(in: .whitespaces), !r.isEmpty { return r }
+        return Self.regionFromAddress(address)
+    }
+
+    /// "133 Duane St, New York, NY 10013, USA" -> "NY". Returns nil unless the
+    /// component reads like a short state code, so verbose international
+    /// addresses never produce a wrong label.
+    static func regionFromAddress(_ address: String?) -> String? {
+        guard let address else { return nil }
+        var parts = address.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let countries: Set<String> = ["USA", "US", "UNITED STATES", "CANADA", "CA"]
+        if parts.count > 1, countries.contains(parts[parts.count - 1].replacingOccurrences(of: ".", with: "").uppercased()) {
+            parts.removeLast()
+        }
+        guard let last = parts.last,
+              let token = last.split(separator: " ").first.map(String.init),
+              (2...3).contains(token.count),
+              token.allSatisfy({ $0.isLetter && $0.isUppercase })
+        else { return nil }
+        return token
+    }
 
     var coordinate: CLLocationCoordinate2D? {
         guard let lat, let lng else { return nil }

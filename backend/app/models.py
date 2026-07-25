@@ -93,6 +93,8 @@ class Place(Base):
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
+    # State/province short code ("TX", "NY") — used to label city lists.
+    region: Mapped[str | None] = mapped_column(String, nullable=True)
     rating: Mapped[float | None] = mapped_column(Float, nullable=True)
     review_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price_level: Mapped[int | None] = mapped_column(Integer, nullable=True)

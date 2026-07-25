@@ -33,7 +33,7 @@ _TEXT_FIELD_MASK = ",".join([
     "places.location", "places.types", "places.primaryType", "places.businessStatus",
 ])
 _DETAILS_FIELD_MASK = ",".join([
-    "id", "displayName", "formattedAddress", "location", "rating",
+    "id", "displayName", "formattedAddress", "addressComponents", "location", "rating",
     "userRatingCount", "priceLevel", "businessStatus", "nationalPhoneNumber",
     "regularOpeningHours", "utcOffsetMinutes", "googleMapsUri", "photos",
 ])
@@ -57,10 +57,43 @@ class GeocodeResult:
     business_status: str | None = None
     google_maps_url: str | None = None
     city: str | None = None
+    region: str | None = None  # state/province short code, e.g. "TX", "NY"
     country: str | None = None
 
 
 _PLACEHOLDER_NAMES = {"unknown", "n/a", "na", "unnamed", "unknown place", ""}
+
+
+def _region_from_components(components: list[dict] | None) -> str | None:
+    """State/province from Google's addressComponents ("TX", "NY", "ON")."""
+    for c in components or []:
+        if "administrative_area_level_1" in (c.get("types") or []):
+            return c.get("shortText") or c.get("longText")
+    return None
+
+
+def region_from_address(address: str | None) -> str | None:
+    """Last-resort region parse from a formatted address.
+
+    "133 Duane St, New York, NY 10013, USA" -> "NY". Only accepts a 2-3 char
+    uppercase code (optionally followed by a postal code), so verbose
+    international addresses simply yield None rather than a wrong label.
+    """
+    if not address:
+        return None
+    parts = [p.strip() for p in address.split(",") if p.strip()]
+    # Drop the trailing country, which is what precedes the state in most
+    # "…, NY 10013, USA" formats.
+    if len(parts) > 1 and parts[-1].replace(".", "").upper() in {
+        "USA", "US", "UNITED STATES", "CANADA", "CA",
+    }:
+        parts.pop()
+    if not parts:
+        return None
+    token = parts[-1].split()[0] if parts[-1].split() else ""
+    if 2 <= len(token) <= 3 and token.isalpha() and token.isupper():
+        return token
+    return None
 
 
 def is_real_place_name(name: str | None) -> bool:
@@ -108,13 +141,27 @@ def geocode(place, address_hint: str | None = None) -> GeocodeResult:
     return result
 
 
+def _region_from_osm(top: dict) -> str | None:
+    """State/province code from a Nominatim `addressdetails=1` payload.
+
+    Prefers the ISO 3166-2 subdivision ("US-TX" -> "TX"); otherwise falls back
+    to the state name only when it's already short enough to read as a code.
+    """
+    addr = top.get("address") or {}
+    iso = addr.get("ISO3166-2-lvl4") or addr.get("ISO3166-2-lvl3")
+    if iso and "-" in iso:
+        return iso.split("-")[-1]
+    state = addr.get("state") or addr.get("province")
+    return state if state and len(state) <= 3 else None
+
+
 def _nominatim_address(address: str, place) -> GeocodeResult | None:
     """Geocode a precise street address and trust the top hit. Returns None if
     Nominatim finds nothing (caller then falls back to name-based lookup)."""
     try:
         r = httpx.get(
             _NOMINATIM,
-            params={"q": address, "format": "json", "limit": 1},
+            params={"q": address, "format": "json", "limit": 1, "addressdetails": 1},
             headers={"User-Agent": "ReelMap/0.1 (dev)"},
             timeout=30,
         )
@@ -133,6 +180,7 @@ def _nominatim_address(address: str, place) -> GeocodeResult | None:
         lng=float(top["lon"]),
         address=address,  # keep the clean platform address, not OSM's verbose one
         city=place.city,
+        region=_region_from_osm(top) or region_from_address(address),
         country=getattr(place, "country", None),
     )
 
@@ -286,12 +334,13 @@ def _places_details(place_id: str, place) -> GeocodeResult:
         for p in (d.get("photos") or [])[:4]
         if p.get("name")
     ]
+    address = d.get("formattedAddress")
     return GeocodeResult(
         external_place_id=f"gp:{d.get('id', place_id)}",
         name=(d.get("displayName") or {}).get("text") or place.name,
         lat=lat,
         lng=lng,
-        address=d.get("formattedAddress"),
+        address=address,
         rating=d.get("rating"),
         review_count=d.get("userRatingCount"),
         price_level=_PRICE_LEVELS.get(d.get("priceLevel")),
@@ -302,6 +351,7 @@ def _places_details(place_id: str, place) -> GeocodeResult:
         business_status=d.get("businessStatus"),
         google_maps_url=d.get("googleMapsUri"),
         city=place.city,
+        region=_region_from_components(d.get("addressComponents")) or region_from_address(address),
         country=getattr(place, "country", None),
     )
 
@@ -354,7 +404,7 @@ def _nominatim(place) -> GeocodeResult:
         try:
             r = httpx.get(
                 _NOMINATIM,
-                params={"q": q, "format": "json", "limit": 3},
+                params={"q": q, "format": "json", "limit": 3, "addressdetails": 1},
                 headers={"User-Agent": "ReelMap/0.1 (dev)"},
                 timeout=30,
             )
@@ -375,6 +425,7 @@ def _nominatim(place) -> GeocodeResult:
                 lng=float(top["lon"]),
                 address=display,
                 city=place.city,
+                region=_region_from_osm(top),
                 country=getattr(place, "country", None),
             )
 

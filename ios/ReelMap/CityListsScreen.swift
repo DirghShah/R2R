@@ -33,7 +33,7 @@ struct CityListsScreen: View {
         return places.filter {
             $0.name.lowercased().contains(q)
                 || ($0.cuisine?.lowercased().contains(q) ?? false)
-                || ($0.city?.lowercased().contains(q) ?? false)
+                || ($0.cityLabel?.lowercased().contains(q) ?? false)
         }
     }
 
@@ -49,7 +49,7 @@ struct CityListsScreen: View {
     }
 
     private var cities: [(name: String, places: [CachedPlace])] {
-        Dictionary(grouping: filtered) { $0.city ?? "Other" }
+        Dictionary(grouping: filtered) { $0.cityLabel ?? "Other" }
             .map { (name: $0.key, places: $0.value.sorted(by: withinCitySort)) }
             // Total order so expanding a city never reshuffles the list.
             .sorted { $0.places.count != $1.places.count ? $0.places.count > $1.places.count : $0.name < $1.name }
@@ -178,7 +178,7 @@ private struct CityRow: View {
 
     private var shareText: String {
         let lines = places.map { p -> String in
-            let area = p.address ?? p.city ?? ""
+            let area = p.address ?? p.cityLabel ?? ""
             return "• \(p.name)\(area.isEmpty ? "" : " — \(area)")"
         }
         return "\(name) — saved on ReelMap\n" + lines.joined(separator: "\n")
@@ -242,7 +242,7 @@ private struct PlaceListCard: View {
         if let cuisine = place.cuisine?.trimmingCharacters(in: .whitespacesAndNewlines), !cuisine.isEmpty {
             parts.append(cuisine)
         }
-        if let area = place.address ?? place.city, !area.isEmpty { parts.append(area) }
+        if let area = place.address ?? place.cityLabel, !area.isEmpty { parts.append(area) }
         if let d = place.distanceMeters(from: userLocation) { parts.append(DistanceFormat.short(d)) }
         return parts.isEmpty ? place.categoryEnum.displayName : parts.joined(separator: " · ")
     }
