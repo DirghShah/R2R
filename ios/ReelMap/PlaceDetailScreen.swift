@@ -15,32 +15,37 @@ struct PlaceDetailScreen: View {
     @State private var mark: PlaceMark?
     @State private var visited = false
     @State private var note = ""
+    @FocusState private var isNotesFocused: Bool
 
     private var cat: PlaceCategory { place.categoryEnum }
     private var tint: Color { place.pinColor }
     private var hasCoords: Bool { place.coordinate != nil }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                hero
-                VStack(alignment: .leading, spacing: 14) {
-                    badgeRow
-                    if let s = place.summary, !s.isEmpty {
-                        Text(s).font(.system(size: 15)).foregroundStyle(Color(hex: 0x3A423D)).lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
+        ZStack {
+            Color.clear.onTapGesture { isNotesFocused = false }
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    hero
+                    VStack(alignment: .leading, spacing: 14) {
+                        badgeRow
+                        if let s = place.summary, !s.isEmpty {
+                            Text(s).font(.system(size: 15)).foregroundStyle(.ink).lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !place.tips.isEmpty { tipsCard }
+                        if !place.whatToOrder.isEmpty { orderCard }
+                        infoCard
+                        visitedCard
+                        sourcedFrom
+                        actions
                     }
-                    if !place.tips.isEmpty { tipsCard }
-                    if !place.whatToOrder.isEmpty { orderCard }
-                    infoCard
-                    visitedCard
-                    sourcedFrom
-                    actions
+                    .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 34)
                 }
-                .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 34)
             }
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
         .background(Color.canvas)
         .presentationDetents(detents)
         .presentationDragIndicator(.visible)
@@ -169,7 +174,7 @@ struct PlaceDetailScreen: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "checkmark").font(.system(size: 13, weight: .heavy)).foregroundStyle(.appAccent)
                         .padding(.top, 2)
-                    Text(tip).font(.system(size: 14)).foregroundStyle(Color(hex: 0x3A423D))
+                    Text(tip).font(.system(size: 14)).foregroundStyle(.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 7)
@@ -183,7 +188,7 @@ struct PlaceDetailScreen: View {
             ForEach(Array(place.whatToOrder.enumerated()), id: \.offset) { i, item in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "circle.fill").font(.system(size: 5)).foregroundStyle(.appAccent).padding(.top, 7)
-                    Text(item).font(.system(size: 14)).foregroundStyle(Color(hex: 0x3A423D))
+                    Text(item).font(.system(size: 14)).foregroundStyle(.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 6)
@@ -199,9 +204,9 @@ struct PlaceDetailScreen: View {
                     HStack(spacing: 12) {
                         Image(systemName: row.icon).font(.system(size: 17)).foregroundStyle(.inkMuted).frame(width: 20)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(row.label).font(.system(size: 13)).foregroundStyle(.inkMuted)
+                            Text(row.label).font(.system(size: 13)).foregroundStyle(.secondary)
                             Text(row.value).font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(row.link ? .linkBlue : .ink).lineLimit(1)
+                                .foregroundStyle(row.link ? .linkBlue : .primary).lineLimit(1)
                         }
                         Spacer()
                     }
@@ -264,9 +269,10 @@ struct PlaceDetailScreen: View {
             Rectangle().fill(Color.hairline).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("YOUR NOTES").font(.system(size: 11, weight: .semibold)).tracking(0.4).foregroundStyle(.inkMuted)
+                Text("YOUR NOTES").font(.system(size: 11, weight: .semibold)).tracking(0.4).foregroundStyle(.secondary)
                 TextField("Add a private note…", text: $note, axis: .vertical)
                     .font(.system(size: 14)).foregroundStyle(.ink).lineLimit(1...4)
+                    .focused($isNotesFocused)
             }
         }
         .padding(16).card(20)
