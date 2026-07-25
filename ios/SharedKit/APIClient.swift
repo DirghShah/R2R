@@ -128,6 +128,9 @@ public actor APIClient {
         if authed, let token = AuthStore.token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        // Harmless normally; when API_BASE_URL is an ngrok tunnel it skips the
+        // free-tier browser interstitial that would otherwise break API calls.
+        req.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
         let data: Data
         let resp: URLResponse
         do {
