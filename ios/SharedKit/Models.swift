@@ -108,11 +108,17 @@ public struct ReelStatus: Codable, Sendable {
     public let reelID: String
     public let status: String
     public let placeCount: Int
+    /// The backend already had this reel analyzed and reused the stored result
+    /// instead of running (and charging for) a second analysis.
+    public let alreadyAnalyzed: Bool?
+
+    public var isDuplicate: Bool { alreadyAnalyzed == true }
 
     enum CodingKeys: String, CodingKey {
         case status
         case reelID = "reel_id"
         case placeCount = "place_count"
+        case alreadyAnalyzed = "already_analyzed"
     }
 }
 

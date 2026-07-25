@@ -9,6 +9,7 @@ struct AddReelScreen: View {
 
     @State private var text = ""
     @State private var fieldError: String?
+    @State private var notice: String?
     @State private var submitting = false
 
     var body: some View {
@@ -47,9 +48,9 @@ struct AddReelScreen: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                     .focused($focused).submitLabel(.done)
                     .onSubmit { focused = false }
-                    .onChange(of: text) { fieldError = nil }
+                    .onChange(of: text) { fieldError = nil; notice = nil }
                 if !text.isEmpty {
-                    Button { text = ""; fieldError = nil } label: {
+                    Button { text = ""; fieldError = nil; notice = nil } label: {
                         Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.inkSecondary)
                             .frame(width: 22, height: 22).background(Color(hex: 0xE6E6DF), in: Circle())
                     }.buttonStyle(.plain)
@@ -68,6 +69,10 @@ struct AddReelScreen: View {
             if let fieldError {
                 Label(fieldError, systemImage: "exclamationmark.circle.fill")
                     .font(.footnote).foregroundStyle(.closedRed)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+            } else if let notice {
+                Label(notice, systemImage: "checkmark.circle.fill")
+                    .font(.footnote).foregroundStyle(.appAccent)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
             }
 
@@ -235,12 +240,24 @@ struct AddReelScreen: View {
         submitting = true
         defer { submitting = false }
         do {
-            _ = try await APIClient.shared.submitReel(url: link)
+            let status = try await APIClient.shared.submitReel(url: link)
             text = ""
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // A reel we've already analyzed costs nothing and produces nothing
+            // new — say so instead of implying a fresh analysis is running.
+            notice = duplicateNotice(for: status)
             store.resume(context)
         } catch {
             fieldError = error.localizedDescription
         }
+    }
+
+    private func duplicateNotice(for status: ReelStatus) -> String? {
+        guard status.isDuplicate else { return nil }
+        if status.status == "done" && status.placeCount > 0 {
+            let n = status.placeCount
+            return "Already analyzed — its \(n) place\(n == 1 ? " is" : "s are") on your map."
+        }
+        return "Already analyzed — restoring its places now."
     }
 }

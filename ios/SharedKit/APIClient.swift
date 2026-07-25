@@ -98,6 +98,12 @@ public actor APIClient {
         try await request("/lists")
     }
 
+    /// Remove one saved place. The reel's analysis is kept server-side, so
+    /// re-submitting the reel brings the pin back without re-analyzing it.
+    public func deletePlace(id: String) async throws {
+        try await requestVoid("/places/\(id)", method: "DELETE")
+    }
+
     // MARK: Core
 
     private func request<T: Decodable>(

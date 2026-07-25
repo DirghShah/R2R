@@ -15,6 +15,9 @@ struct PlaceDetailScreen: View {
     @State private var mark: PlaceMark?
     @State private var visited = false
     @State private var note = ""
+    @State private var confirmDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String?
     @FocusState private var isNotesFocused: Bool
 
     private var cat: PlaceCategory { place.categoryEnum }
@@ -37,6 +40,7 @@ struct PlaceDetailScreen: View {
                     visitedCard
                     sourcedFrom
                     actions
+                    removeButton
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 34)
             }
@@ -56,6 +60,18 @@ struct PlaceDetailScreen: View {
         .confirmationDialog("Open in Maps", isPresented: $showMapsDialog, titleVisibility: .visible) {
             Button("Apple Maps") { openAppleMaps() }
             Button("Google Maps") { openGoogleMaps() }
+        }
+        .confirmationDialog("Remove \(place.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Remove pin", role: .destructive) { Task { await deletePlace() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It disappears from your map and lists. Sharing the reel again brings it back.")
+        }
+        .alert("Couldn't remove", isPresented: .init(get: { deleteError != nil },
+                                                    set: { if !$0 { deleteError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
         }
     }
 
@@ -279,6 +295,42 @@ struct PlaceDetailScreen: View {
                 }.buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: Remove
+
+    private var removeButton: some View {
+        Button { Haptics.tap(); confirmDelete = true } label: {
+            HStack(spacing: 8) {
+                if deleting { ProgressView().tint(.closedRed) }
+                else { Image(systemName: "trash").font(.system(size: 14, weight: .semibold)) }
+                Text(deleting ? "Removing…" : "Remove this pin").font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(.closedRed)
+            .frame(maxWidth: .infinity).padding(14)
+            .background(Color.closedRed.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(deleting)
+    }
+
+    private func deletePlace() async {
+        deleting = true
+        defer { deleting = false }
+        let id = place.id
+        do {
+            try await APIClient.shared.deletePlace(id: id)
+        } catch {
+            deleteError = error.localizedDescription
+            return
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        dismiss()
+        // Let the sheet finish tearing down before the model goes away — this
+        // view still holds `place`, and reading a deleted SwiftData object mid
+        // dismissal is a crash.
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        Syncer.purge(placeID: id, context)
     }
 
     // MARK: Visited + notes (local, survives sync)

@@ -15,6 +15,9 @@ class ReelStatusResponse(BaseModel):
     status: str  # pending | processing | done | failed
     place_count: int = 0
     error: str | None = None
+    # True when the reel was already analyzed (by this or any user) and the
+    # stored result was reused instead of paying for a second analysis.
+    already_analyzed: bool = False
 
 
 class ReelActivityOut(BaseModel):

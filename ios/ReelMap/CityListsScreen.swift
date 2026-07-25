@@ -12,6 +12,8 @@ struct CityListsScreen: View {
     @State private var selected: CachedPlace?
     @State private var searchText = ""
     @State private var sortMode: SortMode = .recent
+    @State private var pendingDelete: CachedPlace?
+    @State private var deleteError: String?
 
     enum SortMode: String, CaseIterable, Identifiable {
         case recent = "Recent", rating = "Top rated", name = "Name"
@@ -76,7 +78,8 @@ struct CityListsScreen: View {
                                     userLocation: location.current,
                                     expanded: expanded.contains(city.name),
                                     toggle: { toggle(city.name) },
-                                    openPlace: { Haptics.tap(); selected = $0 })
+                                    openPlace: { Haptics.tap(); selected = $0 },
+                                    deletePlace: { pendingDelete = $0 })
                             }
                         }
                     }
@@ -88,6 +91,32 @@ struct CityListsScreen: View {
         .task { await Syncer.refresh(context) }
         .refreshable { await Syncer.refresh(context, force: true) }
         .sheet(item: $selected) { PlaceDetailScreen(place: $0, userLocation: location.current) }
+        .confirmationDialog("Remove \(pendingDelete?.name ?? "this place")?",
+                            isPresented: .init(get: { pendingDelete != nil },
+                                               set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible) {
+            Button("Remove pin", role: .destructive) {
+                if let place = pendingDelete { Task { await delete(place) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It disappears from your map and lists. Sharing the reel again brings it back.")
+        }
+        .alert("Couldn't remove", isPresented: .init(get: { deleteError != nil },
+                                                    set: { if !$0 { deleteError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    private func delete(_ place: CachedPlace) async {
+        do {
+            try await Syncer.delete(placeID: place.id, context)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            deleteError = error.localizedDescription
+        }
     }
 
     private var header: some View {
@@ -175,6 +204,7 @@ private struct CityRow: View {
     let expanded: Bool
     let toggle: () -> Void
     let openPlace: (CachedPlace) -> Void
+    let deletePlace: (CachedPlace) -> Void
 
     private var shareText: String {
         let lines = places.map { p -> String in
@@ -217,7 +247,9 @@ private struct CityRow: View {
                     ForEach(Array(places.enumerated()), id: \.element.id) { idx, place in
                         PlaceListCard(place: place, rank: idx + 1,
                                       visited: visitedIDs.contains(place.id),
-                                      userLocation: userLocation) { openPlace(place) }
+                                      userLocation: userLocation,
+                                      open: { openPlace(place) },
+                                      delete: { deletePlace(place) })
                     }
                 }
                 .padding(.horizontal, 14).padding(.bottom, 8)
@@ -234,6 +266,7 @@ private struct PlaceListCard: View {
     let visited: Bool
     let userLocation: CLLocation?
     let open: () -> Void
+    let delete: () -> Void
     private var tint: Color { place.pinColor }
 
     /// "Italian · Downtown · 0.3 mi" — cuisine, area, then distance when known.
@@ -298,5 +331,11 @@ private struct PlaceListCard: View {
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.cardStroke))
         }
         .buttonStyle(.plain)
+        // Long-press to remove — these cards live in a LazyVStack, not a List,
+        // so there are no swipe actions to hang this off.
+        .contextMenu {
+            Button("Open", systemImage: "info.circle", action: open)
+            Button("Remove pin", systemImage: "trash", role: .destructive, action: delete)
+        }
     }
 }

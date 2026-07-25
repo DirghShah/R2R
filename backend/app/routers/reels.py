@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -27,29 +27,70 @@ def submit_reel(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Free-tier usage cap (monetization hook; generous while free).
+    reel = db.scalar(select(ReelSource).where(ReelSource.canonical_id == cid))
+
+    # --- Known reel: reuse the stored analysis, never pay for it twice --------
+    if reel is not None:
+        _record_submission(db, user.id, reel.id)
+        saved = _place_count(db, user.id, reel.id)
+
+        # Still in flight — don't enqueue a second job for the same reel.
+        if reel.status in ("pending", "processing"):
+            db.commit()
+            return ReelStatusResponse(reel_id=reel.id, status=reel.status,
+                                      place_count=saved, already_analyzed=True)
+
+        if reel.status == "done":
+            db.commit()
+            # The user already holds this reel's pins: nothing to do at all.
+            # Otherwise queue the *link* job, which copies the cached places
+            # across without re-running the fetch/vision/geocode pipeline.
+            if saved == 0:
+                enqueue_analyze(reel.id, user.id)
+            return ReelStatusResponse(reel_id=reel.id, status="done",
+                                      place_count=saved, already_analyzed=True)
+
+        # Previously failed — retry it, but don't bill a failure to the quota.
+        reel.status = "pending"
+        reel.error = None
+        db.commit()
+        enqueue_analyze(reel.id, user.id)
+        return ReelStatusResponse(reel_id=reel.id, status="pending")
+
+    # --- New reel: this is the only path that costs an analysis --------------
     if user.plan == "free" and user.reels_this_month >= settings.free_monthly_reel_limit:
         raise HTTPException(status_code=402, detail="Monthly limit reached")
 
-    reel = db.scalar(select(ReelSource).where(ReelSource.canonical_id == cid))
-    if reel is None:
-        reel = ReelSource(url=body.url, canonical_id=cid, platform=platform, status="pending")
-        db.add(reel)
-        db.commit()
-        db.refresh(reel)
-
-    # Record the submission so it shows in this user's activity/queue feed.
-    link = db.scalar(
-        select(UserReel).where(UserReel.user_id == user.id, UserReel.reel_source_id == reel.id)
-    )
-    if link is None:
-        db.add(UserReel(user_id=user.id, reel_source_id=reel.id))
-
+    reel = ReelSource(url=body.url, canonical_id=cid, platform=platform, status="pending")
+    db.add(reel)
+    db.flush()
+    _record_submission(db, user.id, reel.id)
     user.reels_this_month += 1
     db.commit()
 
     enqueue_analyze(reel.id, user.id)
     return ReelStatusResponse(reel_id=reel.id, status=reel.status)
+
+
+def _record_submission(db: Session, user_id: str, reel_id: str) -> None:
+    """Put the reel in this user's activity feed (idempotent)."""
+    link = db.scalar(
+        select(UserReel).where(UserReel.user_id == user_id, UserReel.reel_source_id == reel_id)
+    )
+    if link is None:
+        db.add(UserReel(user_id=user_id, reel_source_id=reel_id))
+
+
+def _place_count(db: Session, user_id: str, reel_id: str) -> int:
+    """How many of the user's saved places came from this reel — counting the
+    ones deduped onto an earlier pin, which record the reel in `sources`."""
+    rows = db.execute(
+        select(UserPlace.reel_source_id, UserPlace.sources).where(UserPlace.user_id == user_id)
+    ).all()
+    return sum(
+        1 for source_id, sources in rows
+        if source_id == reel_id or reel_id in (sources or [])
+    )
 
 
 @router.get("/reels", response_model=list[ReelActivityOut])
@@ -67,26 +108,29 @@ def list_activity(
         .limit(min(limit, 100))
     ).all()
 
-    out: list[ReelActivityOut] = []
-    for reel, created in rows:
-        count = db.scalar(
-            select(func.count())
-            .select_from(UserPlace)
-            .where(UserPlace.user_id == user.id, UserPlace.reel_source_id == reel.id)
+    # One pass over the user's places, then count per reel in memory — a COUNT
+    # per row would be an N+1 against the whole feed.
+    saved = db.execute(
+        select(UserPlace.reel_source_id, UserPlace.sources).where(UserPlace.user_id == user.id)
+    ).all()
+    counts: dict[str, int] = {}
+    for source_id, sources in saved:
+        for reel_id in {source_id, *(sources or [])}:
+            counts[reel_id] = counts.get(reel_id, 0) + 1
+
+    return [
+        ReelActivityOut(
+            reel_id=reel.id,
+            status=reel.status,
+            platform=reel.platform,
+            title=_title(reel),
+            thumbnail_url=reel.thumbnail_url,
+            place_count=counts.get(reel.id, 0),
+            error=reel.error,
+            created_at=created,
         )
-        out.append(
-            ReelActivityOut(
-                reel_id=reel.id,
-                status=reel.status,
-                platform=reel.platform,
-                title=_title(reel),
-                thumbnail_url=reel.thumbnail_url,
-                place_count=count or 0,
-                error=reel.error,
-                created_at=created,
-            )
-        )
-    return out
+        for reel, created in rows
+    ]
 
 
 @router.get("/reels/{reel_id}", response_model=ReelStatusResponse)
@@ -98,13 +142,11 @@ def reel_status(
     reel = db.get(ReelSource, reel_id)
     if reel is None:
         raise HTTPException(status_code=404, detail="Reel not found")
-    count = db.scalar(
-        select(func.count())
-        .select_from(UserPlace)
-        .where(UserPlace.user_id == user.id, UserPlace.reel_source_id == reel.id)
-    )
     return ReelStatusResponse(
-        reel_id=reel.id, status=reel.status, place_count=count or 0, error=reel.error
+        reel_id=reel.id,
+        status=reel.status,
+        place_count=_place_count(db, user.id, reel.id),
+        error=reel.error,
     )
 
 

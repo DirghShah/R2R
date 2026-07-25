@@ -1,7 +1,7 @@
 """Read the user's saved places and auto-generated city lists."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -51,6 +51,55 @@ def list_places(
     return out
 
 
+@router.delete("/places/{user_place_id}", status_code=204)
+def delete_place(
+    user_place_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Remove one saved place (a wrong pin, a place you're not interested in).
+
+    Only the user's own link to the place is deleted — the canonical Place row
+    is shared with other users and with the cached reel analysis, so it stays.
+    Re-submitting the reel will bring the pin back.
+    """
+    up = db.scalar(
+        select(UserPlace).where(UserPlace.id == user_place_id, UserPlace.user_id == user.id)
+    )
+    if up is None:
+        raise HTTPException(status_code=404, detail="Place not found")
+
+    city_id = up.place.city_id if up.place else None
+    category = up.place.category if up.place else None
+    db.delete(up)
+    db.flush()
+    _prune_empty_collection(db, user.id, city_id, category)
+    db.commit()
+    return Response(status_code=204)
+
+
+def _prune_empty_collection(db: Session, user_id: str, city_id: str | None, category: str | None) -> None:
+    """Drop the auto-generated list once its last place is gone, so the user
+    isn't left with an empty 'Dallas cafes'."""
+    remaining = db.scalar(
+        select(func.count())
+        .select_from(UserPlace)
+        .join(Place, Place.id == UserPlace.place_id)
+        .where(UserPlace.user_id == user_id, Place.city_id == city_id, Place.category == category)
+    )
+    if remaining:
+        return
+    coll = db.scalar(
+        select(Collection).where(
+            Collection.user_id == user_id,
+            Collection.city_id == city_id,
+            Collection.category == category,
+        )
+    )
+    if coll is not None:
+        db.delete(coll)
+
+
 @router.get("/lists", response_model=list[CollectionOut])
 def list_collections(
     user: User = Depends(get_current_user),
@@ -72,11 +121,13 @@ def list_collections(
                 Place.category == c.category,
             )
         )
+        if not count:
+            continue  # every place was deleted — don't show an empty list
         city = db.get(City, c.city_id) if c.city_id else None
         out.append(
             CollectionOut(
                 id=c.id, title=c.title, category=c.category,
-                city=city.name if city else None, place_count=count or 0,
+                city=city.name if city else None, place_count=count,
             )
         )
     return out

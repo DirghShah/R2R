@@ -10,7 +10,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import settings
 from app.db import session
@@ -159,9 +159,10 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
             geo = geocode.GeocodeResult(name=ep.name, city=ep.city, country=ep.country)
 
         place = _upsert_place(db, ep, geo)
-        _upsert_user_place(db, user_id, place, reel, ep)
+        _, created = _upsert_user_place(db, user_id, place, reel, ep)
         _bucket_collection(db, user_id, place)
-        saved += 1
+        if created:
+            saved += 1
     return saved, result.input_tokens, result.output_tokens
 
 
@@ -170,6 +171,17 @@ def _upsert_place(db, ep, geo) -> Place:
     place = None
     if geo.external_place_id:
         place = db.scalar(select(Place).where(Place.external_place_id == geo.external_place_id))
+    else:
+        # Un-pinned places have no external id; match on name within the city so
+        # a second reel about the same venue reuses the row instead of cloning it.
+        name = (geo.name or ep.name).strip()
+        place = db.scalar(
+            select(Place).where(
+                Place.external_place_id.is_(None),
+                func.lower(Place.name) == name.lower(),
+                Place.city_id == (city.id if city else None),
+            )
+        )
     if place is None:
         place = Place(external_place_id=geo.external_place_id, name=geo.name or ep.name)
         db.add(place)
@@ -195,16 +207,31 @@ def _upsert_place(db, ep, geo) -> Place:
     return place
 
 
-def _upsert_user_place(db, user_id: str, place: Place, reel: ReelSource, ep) -> UserPlace:
-    existing = db.scalar(
+def _record_source(up: UserPlace, reel_id: str) -> None:
+    """Track every reel a pin came from. Reassigns the list so SQLAlchemy sees
+    the JSON column as dirty (in-place mutation isn't tracked)."""
+    existing = up.sources or []
+    if reel_id not in existing:
+        up.sources = [*existing, reel_id]
+
+
+def _upsert_user_place(db, user_id: str, place: Place, reel: ReelSource, ep) -> tuple[UserPlace, bool]:
+    """Returns (row, created).
+
+    A place the user already has pinned is never added twice — even from a
+    different reel. The new reel is recorded as an extra source on the existing
+    pin instead, so one venue is always exactly one pin on the map.
+    """
+    existing = db.scalars(
         select(UserPlace).where(
             UserPlace.user_id == user_id,
             UserPlace.place_id == place.id,
-            UserPlace.reel_source_id == reel.id,
         )
-    )
+    ).first()
     if existing:
-        return existing
+        _record_source(existing, reel.id)
+        db.flush()
+        return existing, False
     up = UserPlace(
         user_id=user_id,
         place_id=place.id,
@@ -217,12 +244,12 @@ def _upsert_user_place(db, user_id: str, place: Place, reel: ReelSource, ep) -> 
         website=ep.website,
         hours_hint=ep.hours_hint,
         price_level_ai=ep.price_level,
-        sources=[],
+        sources=[reel.id],
         confidence=ep.confidence,
     )
     db.add(up)
     db.flush()
-    return up
+    return up, True
 
 
 def _bucket_collection(db, user_id: str, place: Place) -> None:
@@ -264,14 +291,15 @@ def _link_existing_to_user(db, reel: ReelSource, user_id: str) -> int:
         if t.user_id == user_id or t.place_id in seen_places:
             continue
         seen_places.add(t.place_id)
-        already = db.scalar(
+        # Already pinned from *any* reel — record the extra source, don't clone.
+        already = db.scalars(
             select(UserPlace).where(
                 UserPlace.user_id == user_id,
                 UserPlace.place_id == t.place_id,
-                UserPlace.reel_source_id == reel.id,
             )
-        )
+        ).first()
         if already:
+            _record_source(already, reel.id)
             continue
         db.add(UserPlace(
             user_id=user_id, place_id=t.place_id, reel_source_id=reel.id,

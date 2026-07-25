@@ -259,6 +259,22 @@ enum Syncer {
         lastRefresh = Date()
     }
 
+    /// Remove a saved place everywhere: server first, then the local cache and
+    /// its personal mark. Server-first matters — a failed call must not make the
+    /// pin vanish locally only to reappear on the next sync.
+    static func delete(placeID: String, _ context: ModelContext) async throws {
+        try await APIClient.shared.deletePlace(id: placeID)
+        purge(placeID: placeID, context)
+    }
+
+    static func purge(placeID: String, _ context: ModelContext) {
+        let places = FetchDescriptor<CachedPlace>(predicate: #Predicate { $0.id == placeID })
+        for p in (try? context.fetch(places)) ?? [] { context.delete(p) }
+        let marks = FetchDescriptor<PlaceMark>(predicate: #Predicate { $0.placeID == placeID })
+        for m in (try? context.fetch(marks)) ?? [] { context.delete(m) }
+        try? context.save()
+    }
+
     static func clear(_ context: ModelContext) {
         lastRefresh = nil
         try? context.delete(model: CachedPlace.self)
