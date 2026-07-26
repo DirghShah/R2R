@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.db import session
-from app.models import City, Collection, Place, ReelSource, UserPlace
+from app.models import City, Collection, Place, ReelSource, User, UserPlace
 from worker import extract, frames, geocode, push
 from worker.fetchers import get_fetcher
 
@@ -65,20 +65,25 @@ def _log_metrics(reel: ReelSource, count: int, seconds: float,
     return summary
 
 
-def analyze_reel(reel_id: str, user_id: str) -> dict:
+def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
+    """`map_id` is where the pins land; None means the submitter's personal map
+    (kept optional so jobs enqueued before maps existed still run)."""
     db = session()
     try:
         reel = db.get(ReelSource, reel_id)
         if reel is None:
             return {"error": "reel not found"}
 
+        target_map = map_id or _personal_map_id(db, user_id)
+
         if reel.status == "done":
-            count = _link_existing_to_user(db, reel, user_id)
+            count = _link_existing_to_user(db, reel, user_id, target_map)
             db.commit()
             # Reusing a cached analysis still put new pins on this user's map —
             # they need telling just the same as a fresh run.
             if count > 0:
                 _notify(user_id, count, reel)
+                _notify_other_members(db, target_map, user_id, count)
             return {"status": "done", "places": count, "cached": True}
 
         reel.status = "processing"
@@ -86,7 +91,7 @@ def analyze_reel(reel_id: str, user_id: str) -> dict:
 
         started = time.monotonic()
         try:
-            count, in_tok, out_tok = _run_analysis(db, reel, user_id)
+            count, in_tok, out_tok = _run_analysis(db, reel, user_id, target_map)
             reel.status = "done"
             reel.analyzed_at = datetime.now(timezone.utc)
             db.commit()
@@ -100,12 +105,21 @@ def analyze_reel(reel_id: str, user_id: str) -> dict:
 
         metrics = _log_metrics(reel, count, time.monotonic() - started, in_tok, out_tok)
         _notify(user_id, count, reel)
+        _notify_other_members(db, target_map, user_id, count)
         return {"status": "done", "places": count, "metrics": metrics}
     finally:
         db.close()
 
 
-def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
+def _personal_map_id(db, user_id: str) -> str:
+    from app.maps import personal_map
+
+    m = personal_map(db, user_id)
+    db.commit()
+    return m.id
+
+
+def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int, int, int]:
     data = get_fetcher(reel.platform).fetch(reel.url)
     reel.caption = data.caption
     reel.author_handle = data.author_handle
@@ -164,7 +178,7 @@ def _run_analysis(db, reel: ReelSource, user_id: str) -> tuple[int, int, int]:
             geo = geocode.GeocodeResult(name=ep.name, city=ep.city, country=ep.country)
 
         place = _upsert_place(db, ep, geo)
-        _, created = _upsert_user_place(db, user_id, place, reel, ep)
+        _, created = _upsert_user_place(db, user_id, place, reel, ep, map_id)
         _bucket_collection(db, user_id, place)
         if created:
             saved += 1
@@ -223,16 +237,18 @@ def _record_source(up: UserPlace, reel_id: str) -> None:
         up.sources = [*existing, reel_id]
 
 
-def _upsert_user_place(db, user_id: str, place: Place, reel: ReelSource, ep) -> tuple[UserPlace, bool]:
+def _upsert_user_place(
+    db, user_id: str, place: Place, reel: ReelSource, ep, map_id: str
+) -> tuple[UserPlace, bool]:
     """Returns (row, created).
 
-    A place the user already has pinned is never added twice — even from a
-    different reel. The new reel is recorded as an extra source on the existing
-    pin instead, so one venue is always exactly one pin on the map.
+    A place already pinned *on this map* is never added twice — whichever
+    member added it, and from however many reels. The new reel is recorded as
+    an extra source instead, so one venue is always exactly one pin per map.
     """
     existing = db.scalars(
         select(UserPlace).where(
-            UserPlace.user_id == user_id,
+            UserPlace.map_id == map_id,
             UserPlace.place_id == place.id,
         )
     ).first()
@@ -241,6 +257,7 @@ def _upsert_user_place(db, user_id: str, place: Place, reel: ReelSource, ep) -> 
         db.flush()
         return existing, False
     up = UserPlace(
+        map_id=map_id,
         user_id=user_id,
         place_id=place.id,
         reel_source_id=reel.id,
@@ -288,7 +305,7 @@ def _get_or_create_city(db, name: str | None, country: str | None) -> City | Non
     return city
 
 
-def _link_existing_to_user(db, reel: ReelSource, user_id: str) -> int:
+def _link_existing_to_user(db, reel: ReelSource, user_id: str, map_id: str) -> int:
     """Cached reel: copy reel-derived UserPlaces from any prior user to this one."""
     template = db.scalars(
         select(UserPlace).where(UserPlace.reel_source_id == reel.id)
@@ -299,10 +316,10 @@ def _link_existing_to_user(db, reel: ReelSource, user_id: str) -> int:
         if t.user_id == user_id or t.place_id in seen_places:
             continue
         seen_places.add(t.place_id)
-        # Already pinned from *any* reel — record the extra source, don't clone.
+        # Already on this map from *any* reel — record the source, don't clone.
         already = db.scalars(
             select(UserPlace).where(
-                UserPlace.user_id == user_id,
+                UserPlace.map_id == map_id,
                 UserPlace.place_id == t.place_id,
             )
         ).first()
@@ -310,7 +327,7 @@ def _link_existing_to_user(db, reel: ReelSource, user_id: str) -> int:
             _record_source(already, reel.id)
             continue
         db.add(UserPlace(
-            user_id=user_id, place_id=t.place_id, reel_source_id=reel.id,
+            map_id=map_id, user_id=user_id, place_id=t.place_id, reel_source_id=reel.id,
             description=t.description, tips=t.tips, what_to_order=t.what_to_order,
             vibe=t.vibe, instagram_handle=t.instagram_handle, website=t.website,
             hours_hint=t.hours_hint, price_level_ai=t.price_level_ai,
@@ -321,6 +338,35 @@ def _link_existing_to_user(db, reel: ReelSource, user_id: str) -> int:
             _bucket_collection(db, user_id, place)
         count += 1
     return count
+
+
+def _notify_other_members(db, map_id: str, actor_id: str, count: int) -> None:
+    """Tell the *rest* of a shared map that someone added to it.
+
+    This is what makes a shared map feel live without any websocket: the other
+    members' phones buzz, and the app refreshes when they open it.
+    """
+    if count <= 0:
+        return
+    from app.models import Map, MapMember
+
+    m = db.get(Map, map_id)
+    if m is None or m.is_personal:
+        return
+    actor = db.get(User, actor_id)
+    who = (actor.display_name if actor and actor.display_name else "Someone")
+    others = [
+        row.user_id
+        for row in db.scalars(select(MapMember).where(MapMember.map_id == map_id))
+        if row.user_id != actor_id
+    ]
+    for member_id in others:
+        push.notify_user(
+            member_id,
+            title=m.name,
+            body=f"{who} added {count} place{'s' if count != 1 else ''} 📍",
+            deep_link=f"reelmap://maps/{map_id}",
+        )
 
 
 def _notify(user_id: str, count: int, reel: ReelSource) -> None:

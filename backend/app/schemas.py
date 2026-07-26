@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class SubmitReelRequest(BaseModel):
     url: str
+    # Which map the pins land on; omitted means the caller's personal map.
+    map_id: str | None = None
 
 
 class ReelStatusResponse(BaseModel):
@@ -67,6 +69,11 @@ class UserPlaceOut(BaseModel):
 
     id: str
     place: PlaceOut
+    map_id: str
+    # Who added it — powers "Priya added Kung Fu Tea" in a shared map.
+    added_by_id: str | None = None
+    added_by_name: str | None = None
+    added_by_color: str | None = None
     city: str | None = None
     reel_url: str | None = None
     description: str | None = None
@@ -89,6 +96,53 @@ class CollectionOut(BaseModel):
     category: str | None = None
     city: str | None = None
     place_count: int = 0
+
+
+class MapOut(BaseModel):
+    id: str
+    name: str
+    emoji: str | None = None
+    is_personal: bool
+    is_owner: bool
+    member_count: int
+    place_count: int
+    # Only ever returned to the owner.
+    invite_code: str | None = None
+    created_at: datetime
+
+
+class CreateMapRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    emoji: str | None = Field(default=None, max_length=8)
+
+
+class UpdateMapRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    emoji: str | None = Field(default=None, max_length=8)
+
+
+class MapInviteOut(BaseModel):
+    map_id: str
+    invite_code: str
+    # Ready to drop into a share sheet.
+    invite_url: str
+
+
+class MapPreviewOut(BaseModel):
+    """Shown before sign-in, so it deliberately leaks nothing but the basics."""
+
+    name: str
+    emoji: str | None = None
+    owner_name: str | None = None
+    member_count: int
+
+
+class MapMemberOut(BaseModel):
+    user_id: str
+    display_name: str | None = None
+    avatar_color: str | None = None
+    role: str
+    joined_at: datetime
 
 
 class AppleAuthRequest(BaseModel):

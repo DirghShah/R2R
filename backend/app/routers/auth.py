@@ -17,7 +17,16 @@ from app.auth import (
     verify_apple_identity_token,
 )
 from app.db import get_db
-from app.models import Collection, Device, RefreshToken, User, UserPlace, UserReel
+from app.models import (
+    Collection,
+    Device,
+    Map,
+    MapMember,
+    RefreshToken,
+    User,
+    UserPlace,
+    UserReel,
+)
 from app.ratelimit import limit_auth
 from app.schemas import (
     AppleAuthRequest,
@@ -124,7 +133,31 @@ def delete_account(
         apple.revoke(user.apple_refresh_token)
 
     user_id = user.id
-    for model in (UserPlace, UserReel, Collection, Device, RefreshToken):
+
+    # Maps this user owns go entirely, along with their pins and memberships:
+    # leaving them behind would orphan other members on a map with no owner.
+    owned = list(db.scalars(select(Map).where(Map.owner_id == user_id)))
+    for m in owned:
+        for up in db.scalars(select(UserPlace).where(UserPlace.map_id == m.id)):
+            db.delete(up)
+        for member in db.scalars(select(MapMember).where(MapMember.map_id == m.id)):
+            db.delete(member)
+    db.flush()
+
+    # Pins this user added to *other people's* maps stay — they belong to that
+    # shared map now, not to the person who happened to add them. Reassign the
+    # attribution so the row doesn't point at a deleted user.
+    for up in db.scalars(select(UserPlace).where(UserPlace.user_id == user_id)):
+        owner_id = db.get(Map, up.map_id).owner_id if up.map_id else None
+        if owner_id and owner_id != user_id:
+            up.user_id = owner_id
+        else:
+            db.delete(up)
+    db.flush()
+
+    for m in owned:
+        db.delete(m)
+    for model in (UserReel, Collection, Device, RefreshToken, MapMember):
         for row in db.scalars(select(model).where(model.user_id == user_id)):
             db.delete(row)
     db.delete(user)

@@ -63,6 +63,48 @@ class User(Base):
     devices: Mapped[list[Device]] = relationship(back_populates="user")
 
 
+class Map(Base):
+    """A collection of saved places, owned by one user and shared with others.
+
+    A personal map and a shared map are the *same object* — sharing is just
+    adding a member — so there is one code path rather than an `is_shared`
+    branch running through everything.
+    """
+
+    __tablename__ = "maps"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String)
+    emoji: Mapped[str | None] = mapped_column(String, nullable=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    # The auto-created map every user gets on sign-up. Can't be deleted —
+    # there always has to be somewhere for a share to land.
+    is_personal: Mapped[bool] = mapped_column(default=False)
+    # Null until the owner shares it. Rotating this invalidates old links.
+    invite_code: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    members: Mapped[list[MapMember]] = relationship(
+        back_populates="map", cascade="all, delete-orphan"
+    )
+
+
+class MapMember(Base):
+    """Membership *is* the relationship — there is no friend graph."""
+
+    __tablename__ = "map_members"
+    __table_args__ = (UniqueConstraint("map_id", "user_id", name="uq_map_member"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    map_id: Mapped[str] = mapped_column(ForeignKey("maps.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String, default="editor")  # owner | editor
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    map: Mapped[Map] = relationship(back_populates="members")
+    user: Mapped[User] = relationship()
+
+
 class RefreshToken(Base):
     """Long-lived, rotating session token.
 
@@ -153,10 +195,14 @@ class UserPlace(Base):
 
     __tablename__ = "user_places"
     __table_args__ = (
-        UniqueConstraint("user_id", "place_id", "reel_source_id", name="uq_user_place_reel"),
+        # One venue is exactly one pin per map, whichever member added it and
+        # however many reels it came from.
+        UniqueConstraint("map_id", "place_id", name="uq_map_place"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    map_id: Mapped[str] = mapped_column(ForeignKey("maps.id"), index=True)
+    # Who added it — powers "Priya added Kung Fu Tea" in a shared map.
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     place_id: Mapped[str] = mapped_column(ForeignKey("places.id"), index=True)
     reel_source_id: Mapped[str] = mapped_column(ForeignKey("reel_sources.id"))

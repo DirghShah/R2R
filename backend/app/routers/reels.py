@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.config import settings
 from app.db import get_db
+from app.maps import personal_map, require_member
 from app.models import ReelSource, User, UserPlace, UserReel
 from app.ratelimit import limit_reel_submission
 from app.schemas import ReelActivityOut, ReelStatusResponse, SubmitReelRequest
@@ -31,6 +32,14 @@ def submit_reel(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Where the pins land. Defaulting to the personal map keeps the Share
+    # Extension working without it having to know about maps.
+    if body.map_id:
+        target = require_member(db, body.map_id, user.id)
+    else:
+        target = personal_map(db, user.id)
+    map_id = target.id
+
     reel = db.scalar(select(ReelSource).where(ReelSource.canonical_id == cid))
 
     # --- Known reel: reuse the stored analysis, never pay for it twice --------
@@ -50,7 +59,7 @@ def submit_reel(
             # Otherwise queue the *link* job, which copies the cached places
             # across without re-running the fetch/vision/geocode pipeline.
             if saved == 0:
-                enqueue_analyze(reel.id, user.id)
+                enqueue_analyze(reel.id, user.id, map_id)
             return ReelStatusResponse(reel_id=reel.id, status="done",
                                       place_count=saved, already_analyzed=True)
 
@@ -58,7 +67,7 @@ def submit_reel(
         reel.status = "pending"
         reel.error = None
         db.commit()
-        enqueue_analyze(reel.id, user.id)
+        enqueue_analyze(reel.id, user.id, map_id)
         return ReelStatusResponse(reel_id=reel.id, status="pending")
 
     # --- New reel: this is the only path that costs an analysis --------------
@@ -73,7 +82,7 @@ def submit_reel(
     user.reels_this_month += 1
     db.commit()
 
-    enqueue_analyze(reel.id, user.id)
+    enqueue_analyze(reel.id, user.id, map_id)
     return ReelStatusResponse(reel_id=reel.id, status=reel.status)
 
 

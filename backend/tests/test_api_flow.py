@@ -52,8 +52,10 @@ def client(monkeypatch):
     Base.metadata.create_all(bind=engine)
     # The queue is not under test; record what would have been enqueued.
     enqueued: list[tuple[str, str]] = []
-    monkeypatch.setattr(queue, "enqueue_analyze", lambda r, u: enqueued.append((r, u)))
-    monkeypatch.setattr("app.routers.reels.enqueue_analyze", lambda r, u: enqueued.append((r, u)))
+    monkeypatch.setattr(queue, "enqueue_analyze",
+                        lambda r, u, m=None: enqueued.append((r, u)))
+    monkeypatch.setattr("app.routers.reels.enqueue_analyze",
+                        lambda r, u, m=None: enqueued.append((r, u)))
     with TestClient(app) as c:
         token = c.post("/auth/apple", json={"identity_token": "dev:tester"}).json()["access_token"]
         c.headers["Authorization"] = f"Bearer {token}"
@@ -61,11 +63,14 @@ def client(monkeypatch):
         yield c
 
 
-def _analyze(reel_id: str, user_id: str, names: list[str]) -> int:
+def _analyze(reel_id: str, user_id: str, names: list[str], map_id: str | None = None) -> int:
     """Simulate the AI+geocode stage: persist `names` as places for the reel."""
+    from app.maps import personal_map
+
     db = session()
     try:
         reel = db.get(ReelSource, reel_id)
+        target = map_id or personal_map(db, user_id).id
         saved = 0
         for name in names:
             ep = _Extracted(name)
@@ -75,7 +80,7 @@ def _analyze(reel_id: str, user_id: str, names: list[str]) -> int:
                 external_place_id=f"gp:{name.lower()}",
             )
             place = pipeline._upsert_place(db, ep, geo)
-            _, created = pipeline._upsert_user_place(db, user_id, place, reel, ep)
+            _, created = pipeline._upsert_user_place(db, user_id, place, reel, ep, target)
             pipeline._bucket_collection(db, user_id, place)
             if created:
                 saved += 1
@@ -186,12 +191,15 @@ def test_unpinned_places_dedupe_on_name_within_a_city(client):
     user = _first_user()
     db = session()
     try:
+        from app.maps import personal_map
+
         reel_row = db.get(ReelSource, reel)
+        target = personal_map(db, user).id
         for _ in range(2):
             ep = _Extracted("Nameless Diner")
             geo = pipeline.geocode.GeocodeResult(name="Nameless Diner", city="Dallas", country="USA")
             place = pipeline._upsert_place(db, ep, geo)
-            pipeline._upsert_user_place(db, user, place, reel_row, ep)
+            pipeline._upsert_user_place(db, user, place, reel_row, ep, target)
         db.commit()
         assert len(db.scalars(pipeline.select(Place)).all()) == 1
     finally:
@@ -260,10 +268,14 @@ def _unpinned(client, name: str = "Nameless Diner") -> str:
     db = session()
     try:
         reel_row = db.get(ReelSource, reel)
+        from app.maps import personal_map
+
         ep = _Extracted(name)
         geo = pipeline.geocode.GeocodeResult(name=name, city="Dallas", country="USA")
         place = pipeline._upsert_place(db, ep, geo)
-        pipeline._upsert_user_place(db, _first_user(), place, reel_row, ep)
+        pipeline._upsert_user_place(
+            db, _first_user(), place, reel_row, ep, personal_map(db, _first_user()).id
+        )
         reel_row.status = "done"
         db.commit()
     finally:

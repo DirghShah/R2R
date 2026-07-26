@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     apple_key_id: str | None = None
     apple_private_key: str | None = None  # base64 of the .p8
 
+    # --- Invite links ---
+    # Public origin of this API; invite URLs are built from it.
+    public_base_url: str = "http://localhost:8000"
+    app_store_url: str = ""
+
     # --- AI / pipeline ---
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-opus-4-8"

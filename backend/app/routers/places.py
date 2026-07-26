@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.models import City, Collection, Place, ReelSource, User, UserPlace
+from app.maps import member_map_ids, require_member
+from app.models import City, Collection, Map, MapMember, Place, ReelSource, User, UserPlace
 from app.schemas import CollectionOut, SetPlaceLocationRequest, UserPlaceOut
 from worker.geocode import region_from_address
 
@@ -22,10 +23,22 @@ def list_places(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[UserPlaceOut]:
+    # Every map the user belongs to, in one response, each row tagged with its
+    # map_id — the client filters locally. Deliberately NOT filtered per map:
+    # the iOS cache reconciles by deleting anything the server didn't return,
+    # so a scoped response would silently wipe every other map's pins.
+    map_ids = member_map_ids(db, user.id)
+    if not map_ids:
+        return []
+
     stmt = (
         select(UserPlace)
-        .options(joinedload(UserPlace.place), joinedload(UserPlace.reel_source))
-        .where(UserPlace.user_id == user.id)
+        .options(
+            joinedload(UserPlace.place),
+            joinedload(UserPlace.reel_source),
+            joinedload(UserPlace.user),
+        )
+        .where(UserPlace.map_id.in_(map_ids))
         .order_by(UserPlace.saved_at.desc())
     )
     if city:
@@ -35,9 +48,14 @@ def list_places(
 
 
 def _to_out(up: UserPlace) -> UserPlaceOut:
+    adder = up.user
     return UserPlaceOut(
         id=up.id,
         place=up.place,
+        map_id=up.map_id,
+        added_by_id=adder.id if adder else None,
+        added_by_name=adder.display_name if adder else None,
+        added_by_color=adder.avatar_color if adder else None,
         city=up.place.city.name if up.place and up.place.city else None,
         reel_url=up.reel_source.url if up.reel_source else None,
         description=up.description,
@@ -65,10 +83,8 @@ def set_place_location(
     Geocoding deliberately returns no coordinates rather than risk a wrong pin,
     which leaves the place listed but off the map. This is the escape hatch.
     """
-    up = db.scalar(
-        select(UserPlace).where(UserPlace.id == user_place_id, UserPlace.user_id == user.id)
-    )
-    if up is None or up.place is None:
+    up = _member_place(db, user_place_id, user.id)
+    if up.place is None:
         raise HTTPException(status_code=404, detail="Place not found")
 
     place = up.place
@@ -96,11 +112,7 @@ def delete_place(
     is shared with other users and with the cached reel analysis, so it stays.
     Re-submitting the reel will bring the pin back.
     """
-    up = db.scalar(
-        select(UserPlace).where(UserPlace.id == user_place_id, UserPlace.user_id == user.id)
-    )
-    if up is None:
-        raise HTTPException(status_code=404, detail="Place not found")
+    up = _member_place(db, user_place_id, user.id)
 
     city_id = up.place.city_id if up.place else None
     category = up.place.category if up.place else None
@@ -109,6 +121,19 @@ def delete_place(
     _prune_empty_collection(db, user.id, city_id, category)
     db.commit()
     return Response(status_code=204)
+
+
+def _member_place(db: Session, user_place_id: str, user_id: str) -> UserPlace:
+    """A pin is manageable by anyone in its map, not only whoever added it —
+    otherwise a shared map's members couldn't clean up each other's mistakes."""
+    up = db.scalar(
+        select(UserPlace)
+        .join(MapMember, MapMember.map_id == UserPlace.map_id)
+        .where(UserPlace.id == user_place_id, MapMember.user_id == user_id)
+    )
+    if up is None:
+        raise HTTPException(status_code=404, detail="Place not found")
+    return up
 
 
 def _prune_empty_collection(db: Session, user_id: str, city_id: str | None, category: str | None) -> None:
