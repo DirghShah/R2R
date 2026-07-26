@@ -39,6 +39,7 @@ services:
 
   worker:
     build: .
+    # entrypoint.sh runs migrations first; harmless if the api already did.
     command: rq worker --url redis://redis:6379/0 reels
     env_file: .env
     environment:

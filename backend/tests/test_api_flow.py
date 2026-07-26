@@ -369,3 +369,51 @@ def test_quota_still_blocks_within_the_same_month(client):
     client.post("/reels", json={"url": REEL_A})
     _set_quota(1000, datetime.now(timezone.utc))
     assert client.post("/reels", json={"url": REEL_B}).status_code == 402
+
+
+# --- hardening ------------------------------------------------------------
+
+
+def test_reel_status_is_not_readable_by_another_user(client):
+    """Without an ownership join, any authenticated user could read any reel."""
+    reel_id = client.post("/reels", json={"url": REEL_A}).json()["reel_id"]
+
+    other = TestClient(app)
+    token = other.post("/auth/apple", json={"identity_token": "dev:snooper"}).json()["access_token"]
+    other.headers["Authorization"] = f"Bearer {token}"
+    assert other.get(f"/reels/{reel_id}").status_code == 404
+    # ...while the owner still sees it.
+    assert client.get(f"/reels/{reel_id}").status_code == 200
+
+
+def test_rate_limit_blocks_a_burst_of_submissions(client, monkeypatch):
+    """POST /reels is a direct line to the AI + geocoding bill."""
+    from app import ratelimit
+
+    counts: dict[str, int] = {}
+
+    class _FakeRedis:
+        def incr(self, key):
+            counts[key] = counts.get(key, 0) + 1
+            return counts[key]
+
+        def expire(self, key, seconds):
+            return True
+
+    monkeypatch.setattr(ratelimit, "_redis", lambda: _FakeRedis())
+    monkeypatch.setattr(ratelimit.settings, "rate_limit_reels_per_hour", 3)
+
+    for i in range(3):
+        assert client.post("/reels", json={"url": f"{REEL_A[:-1]}{i}/"}).status_code == 200
+    assert client.post("/reels", json={"url": REEL_B}).status_code == 429
+
+
+def test_rate_limit_fails_open_when_redis_is_down(client, monkeypatch):
+    """A limiter that takes the API down with it is worse than none."""
+    from app import ratelimit
+
+    def _boom():
+        raise ConnectionError("redis unreachable")
+
+    monkeypatch.setattr(ratelimit, "_redis", _boom)
+    assert client.post("/reels", json={"url": REEL_A}).status_code == 200

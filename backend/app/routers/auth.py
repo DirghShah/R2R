@@ -1,20 +1,24 @@
 """Auth + device registration."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, get_current_user, verify_apple_identity_token
 from app.db import get_db
 from app.models import Device, User
+from app.ratelimit import limit_auth
 from app.schemas import AppleAuthRequest, AuthResponse, RegisterDeviceRequest
 
 router = APIRouter(tags=["auth"])
 
 
 @router.post("/auth/apple", response_model=AuthResponse)
-def sign_in_with_apple(body: AppleAuthRequest, db: Session = Depends(get_db)) -> AuthResponse:
+def sign_in_with_apple(
+    body: AppleAuthRequest, request: Request, db: Session = Depends(get_db)
+) -> AuthResponse:
+    limit_auth(request)
     apple_sub = verify_apple_identity_token(body.identity_token)
     user = db.scalar(select(User).where(User.apple_sub == apple_sub))
     if user is None:

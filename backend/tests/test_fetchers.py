@@ -152,3 +152,51 @@ def test_push_is_a_noop_without_apns_credentials(monkeypatch):
 
     monkeypatch.setattr(push.settings, "apns_key_path", None)
     push.notify_user("u1", title="t", body="b")  # must not raise
+
+
+def test_apns_key_can_come_from_base64_env_var(monkeypatch, tmp_path):
+    """Railway/Fly hand you secrets as env vars, not files."""
+    import base64
+
+    from worker import push
+
+    monkeypatch.setattr(push, "_materialised_key_path", None)
+    monkeypatch.setattr(push.settings, "apns_key_path", None)
+    monkeypatch.setattr(push.settings, "apns_key_content",
+                        base64.b64encode(b"-----BEGIN PRIVATE KEY-----").decode())
+
+    path = push._key_path()
+    assert path and path.endswith(".p8")
+    with open(path, "rb") as fh:
+        assert fh.read().startswith(b"-----BEGIN PRIVATE KEY-----")
+    # Reused rather than rewritten on every notification.
+    assert push._key_path() == path
+
+
+def test_apns_key_path_still_wins_for_local_dev(monkeypatch):
+    from worker import push
+
+    monkeypatch.setattr(push.settings, "apns_key_path", "/secrets/AuthKey.p8")
+    monkeypatch.setattr(push.settings, "apns_key_content", "ignored")
+    assert push._key_path() == "/secrets/AuthKey.p8"
+
+
+def test_apple_jwks_is_cached_not_refetched_per_signin(monkeypatch):
+    """Fetching Apple's keys on every login puts an Apple outage in the
+    critical path of every sign-in."""
+    from app import auth
+
+    calls = {"n": 0}
+
+    class _Resp:
+        def json(self):
+            calls["n"] += 1
+            return {"keys": [{"kid": "abc"}]}
+
+    monkeypatch.setattr(auth, "_jwks_cache", None)
+    monkeypatch.setattr(auth.httpx, "get", lambda *a, **k: _Resp())
+
+    assert auth._apple_keys() == [{"kid": "abc"}]
+    auth._apple_keys()
+    auth._apple_keys()
+    assert calls["n"] == 1, "JWKS should be fetched once and cached"

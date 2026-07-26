@@ -62,6 +62,52 @@ MVP, yt-dlp later — so the fragile/ToS-sensitive part is isolated.
 
 ## Migrations
 
-Dev auto-creates tables on boot. For production, wire Alembic
-(`alembic init alembic`) and add a PostGIS `geom` column + GIST index for
-"near me" queries (lat/lng floats are the portable source of truth today).
+The schema is owned by **Alembic in every environment** — there is no
+`create_all` fallback, because it only ran in dev and left production with no
+tables at all.
+
+```bash
+alembic upgrade head                      # apply
+alembic revision --autogenerate -m "..."  # after changing app/models.py
+alembic current                           # what's applied
+```
+
+`entrypoint.sh` runs `alembic upgrade head` before starting the API or worker,
+so a deploy migrates itself.
+
+**Adopting this on an existing dev database** (one that already has tables from
+the old `create_all` path):
+
+```bash
+alembic stamp head    # "these migrations are already applied" — do NOT upgrade
+```
+
+Running `upgrade` on such a database would try to re-create existing tables and
+fail. Stamp first, once.
+
+Later: a PostGIS `geom` column + GIST index for "near me" queries (lat/lng
+floats remain the portable source of truth).
+
+## Deploying
+
+Container + managed Postgres + managed Redis. `api` and `worker` are the same
+image with different commands — exactly what `docker-compose.yml` describes.
+
+Recommended: **Railway** (reads the Dockerfile, Postgres/Redis are plugins).
+Fly.io works too. Avoid free tiers that sleep — a sleeping worker stalls
+analysis mid-job.
+
+Production `.env` must set: `ENVIRONMENT=prod` (this rejects `dev:` auth
+tokens), a real `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, the vendor keys, and
+`APNS_KEY_CONTENT` (base64 of the .p8 — a *path* has no meaning on a PaaS).
+
+### Cost control
+
+A reel with 5 places costs roughly **$0.27** — Apify $0.005, Google Places
+5 x $0.05, Claude ~$0.02. Google Places dominates. `_log_metrics` prints the
+real per-reel cost to the worker log.
+
+Two guards, both on by default:
+- `FREE_MONTHLY_REEL_LIMIT` (default 50) caps the monthly liability per user.
+- `RATE_LIMIT_REELS_PER_HOUR` (default 20) caps bursts. Backed by Redis so it
+  holds across replicas, and fails **open** if Redis is down.

@@ -11,6 +11,7 @@ from app.auth import get_current_user
 from app.config import settings
 from app.db import get_db
 from app.models import ReelSource, User, UserPlace, UserReel
+from app.ratelimit import limit_reel_submission
 from app.schemas import ReelActivityOut, ReelStatusResponse, SubmitReelRequest
 from worker.fetchers.base import parse_source
 from worker.queue import enqueue_analyze
@@ -24,6 +25,7 @@ def submit_reel(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReelStatusResponse:
+    limit_reel_submission(user.id)
     try:
         platform, cid = parse_source(body.url)
     except ValueError as exc:
@@ -155,7 +157,13 @@ def reel_status(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReelStatusResponse:
-    reel = db.get(ReelSource, reel_id)
+    # Ownership check, not just existence: without the UserReel join any
+    # authenticated user could read any reel's status and error by id.
+    reel = db.scalar(
+        select(ReelSource)
+        .join(UserReel, UserReel.reel_source_id == ReelSource.id)
+        .where(ReelSource.id == reel_id, UserReel.user_id == user.id)
+    )
     if reel is None:
         raise HTTPException(status_code=404, detail="Reel not found")
     return ReelStatusResponse(

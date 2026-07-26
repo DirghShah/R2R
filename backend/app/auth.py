@@ -1,6 +1,9 @@
 """Sign in with Apple verification + app JWT issuance/validation."""
 from __future__ import annotations
 
+import logging
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -14,9 +17,39 @@ from app.config import settings
 from app.db import get_db
 from app.models import User
 
+log = logging.getLogger(__name__)
+
 _bearer = HTTPBearer(auto_error=True)
 _APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys"
 _APPLE_ISSUER = "https://appleid.apple.com"
+
+# Apple's signing keys rotate rarely. Fetching them on every sign-in put an
+# Apple round-trip (and an Apple outage) in the critical path of every login.
+_JWKS_TTL_SECONDS = 6 * 3600
+_jwks_cache: tuple[float, list[dict]] | None = None
+_jwks_lock = threading.Lock()
+
+
+def _apple_keys(force_refresh: bool = False) -> list[dict]:
+    """Apple's JWKS, cached. `force_refresh` handles key rotation: an unknown
+    `kid` means our cache is stale, not that the token is forged."""
+    global _jwks_cache
+    with _jwks_lock:
+        cached = _jwks_cache
+        fresh = cached is not None and (time.time() - cached[0]) < _JWKS_TTL_SECONDS
+        if cached is not None and fresh and not force_refresh:
+            return cached[1]
+        try:
+            keys = httpx.get(_APPLE_KEYS_URL, timeout=15).json()["keys"]
+        except Exception:  # noqa: BLE001
+            if cached is not None:
+                # Serve stale keys rather than fail every login during an
+                # Apple/network blip.
+                log.warning("apple JWKS fetch failed; using cached keys", exc_info=True)
+                return cached[1]
+            raise
+        _jwks_cache = (time.time(), keys)
+        return keys
 
 
 def create_access_token(user_id: str) -> str:
@@ -32,9 +65,11 @@ def verify_apple_identity_token(identity_token: str) -> str:
         return identity_token.split(":", 1)[1]
 
     try:
-        keys = httpx.get(_APPLE_KEYS_URL, timeout=15).json()["keys"]
         header = jwt.get_unverified_header(identity_token)
-        key = next(k for k in keys if k["kid"] == header["kid"])
+        keys = _apple_keys()
+        key = next((k for k in keys if k["kid"] == header["kid"]), None)
+        if key is None:  # cache predates a key rotation — refetch once
+            key = next(k for k in _apple_keys(force_refresh=True) if k["kid"] == header["kid"])
         claims = jwt.decode(
             identity_token,
             key,

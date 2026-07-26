@@ -55,11 +55,24 @@ class Settings(BaseSettings):
     enable_transcription: bool = True
     whisper_model: str = "small"
 
-    # --- Free-tier usage cap (monetization hook; generous while free) ---
-    free_monthly_reel_limit: int = 1000
+    # --- Free-tier usage cap (monetization hook) ---
+    # A reel with 5 places costs ~$0.27 (Google Places dominates at $0.05/place),
+    # so this number is a direct monthly liability per free user. Keep it small
+    # until there's a paid tier to fund it.
+    free_monthly_reel_limit: int = 50
+
+    # --- Abuse protection (a public URL is a direct line to the AI/geo bill) ---
+    rate_limit_reels_per_hour: int = 20
+    rate_limit_auth_per_hour: int = 30
+    # Browsers never call this API (native app only), so the allowlist stays
+    # empty unless something explicitly needs it.
+    cors_allow_origins: list[str] = []
 
     # --- Push (APNs) ---
+    # Either a path (local dev) or the base64 of the .p8 (Railway/Fly, where
+    # secrets are env vars and there is no file to point at).
     apns_key_path: str | None = None
+    apns_key_content: str | None = None
     apns_key_id: str | None = None
     apns_team_id: str | None = None
     apns_topic: str = "com.yourco.reelmap"
