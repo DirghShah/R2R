@@ -170,8 +170,11 @@ struct LocationPickerScreen: View {
         saving = true
         defer { saving = false }
         // Fill in an address if the user dragged rather than picking a result —
-        // it's what the list rows and the Address row display.
-        let address = pickedAddress ?? (await Self.reverseGeocode(center))
+        // it's what the list rows and the Address row display. Written as an
+        // explicit if rather than `??`: the stdlib operator's autoclosure isn't
+        // async-aware, so `await` on the right-hand side won't compile.
+        var address = pickedAddress
+        if address == nil { address = await Self.reverseGeocode(center) }
         do {
             let updated = try await APIClient.shared.setPlaceLocation(
                 id: place.id, lat: center.latitude, lng: center.longitude, address: address)
@@ -241,8 +244,12 @@ struct LocationPickerScreen: View {
 
     private static func addressLine(_ item: MKMapItem) -> String? {
         let p = item.placemark
-        let parts = [
-            [p.subThoroughfare, p.thoroughfare].compactMap { $0 }.joined(separator: " "),
+        let street = [p.subThoroughfare, p.thoroughfare].compactMap { $0 }.joined(separator: " ")
+        // Explicitly typed as [String?]: mixing the non-optional `street` with
+        // the placemark's optional fields in one literal made Swift infer
+        // [Any], which can't convert back to String.
+        let parts: [String?] = [
+            street.isEmpty ? nil : street,
             p.locality, p.administrativeArea, p.postalCode, p.country,
         ]
         let line = parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
