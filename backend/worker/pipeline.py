@@ -188,10 +188,13 @@ def _upsert_place(db, ep, geo) -> Place:
     place.name = geo.name or ep.name
     place.category = ep.category
     place.cuisine = ep.cuisine
-    place.lat = geo.lat
-    place.lng = geo.lng
-    place.address = geo.address
-    place.region = geo.region or geocode.region_from_address(geo.address)
+    # A hand-placed pin outranks the geocoder: re-analysis must never move it
+    # back to a guess (or back to nothing). Enrichment below still refreshes.
+    if place.location_source != "user":
+        place.lat = geo.lat
+        place.lng = geo.lng
+        place.address = geo.address
+        place.region = geo.region or geocode.region_from_address(geo.address)
     place.rating = geo.rating
     place.review_count = geo.review_count
     place.price_level = geo.price_level

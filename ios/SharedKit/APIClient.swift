@@ -104,6 +104,16 @@ public actor APIClient {
         try await requestVoid("/places/\(id)", method: "DELETE")
     }
 
+    /// Drop the pin by hand for a place the geocoder couldn't resolve.
+    @discardableResult
+    public func setPlaceLocation(
+        id: String, lat: Double, lng: Double, address: String? = nil
+    ) async throws -> SavedPlace {
+        struct Body: Encodable { let lat: Double; let lng: Double; let address: String? }
+        return try await request("/places/\(id)/location", method: "PATCH",
+                                body: Body(lat: lat, lng: lng, address: address))
+    }
+
     // MARK: Core
 
     private func request<T: Decodable>(

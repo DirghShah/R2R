@@ -1,3 +1,4 @@
+import CoreLocation
 import MapKit
 import SwiftData
 import SwiftUI
@@ -11,9 +12,14 @@ struct MapScreen: View {
     @State private var filter: String = allFilter
     @State private var detail: CachedPlace?
     @State private var showActivity = false
+    @State private var showUnmapped = false
     @State private var camera: MapCameraPosition = .automatic
     @State private var didCenterOnUser = false
     @State private var region: MKCoordinateRegion?
+
+    /// Saved places the geocoder couldn't resolve — they can't be drawn, so the
+    /// map has to account for them somewhere or they just silently vanish.
+    private var unmapped: [CachedPlace] { allPlaces.filter(\.isUnmapped) }
 
     private static let allFilter = "All"
 
@@ -89,6 +95,7 @@ struct MapScreen: View {
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
                 filterBar
+                if !unmapped.isEmpty { unmappedPill }
                 if let toast = activity.toast { ToastView(toast: toast).transition(.move(edge: .top).combined(with: .opacity)) }
             }
             .animation(.snappy, value: activity.toast)
@@ -113,6 +120,28 @@ struct MapScreen: View {
             PlaceDetailScreen(place: $0, userLocation: location.current, detents: [.medium, .large])
         }
         .sheet(isPresented: $showActivity) { ActivityView() }
+        .sheet(isPresented: $showUnmapped) {
+            UnmappedSheet(places: unmapped, userLocation: location.current)
+        }
+    }
+
+    /// The map can only ever show pinned places, so state the shortfall instead
+    /// of letting the count quietly disagree with the user's saved places.
+    private var unmappedPill: some View {
+        Button { Haptics.tap(); showUnmapped = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "mappin.slash").font(.system(size: 12, weight: .bold))
+                Text("\(unmapped.count) place\(unmapped.count == 1 ? "" : "s") without a location")
+                    .font(.system(size: 12.5, weight: .semibold))
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).opacity(0.7)
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 13).padding(.vertical, 8)
+            .background(Capsule().fill(Color.cardFill))
+            .overlay(Capsule().strokeBorder(Color.orange.opacity(0.4)))
+            .shadow(color: Color(hex: 0x1E2822).opacity(0.12), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
     }
 
     private func centerOnUser() {
@@ -158,7 +187,7 @@ struct MapScreen: View {
                 ForEach(filterOptions, id: \.self) { label in
                     let on = filter == label
                     let dot = dotColor(for: label)
-                    let count = label == Self.allFilter ? labelCounts.values.reduce(0, +) : (labelCounts[label] ?? 0)
+                    let count = countLabel(for: label)
                     Button {
                         Haptics.select()
                         withAnimation(.snappy) { filter = label }
@@ -166,7 +195,7 @@ struct MapScreen: View {
                         HStack(spacing: 7) {
                             Circle().fill(on ? Color.white : dot).frame(width: 8, height: 8)
                             Text(label).font(.system(size: 13, weight: .semibold))
-                            Text("\(count)").font(.system(size: 11, weight: .bold))
+                            Text(count).font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(on ? Color.white.opacity(0.85) : .inkMuted)
                         }
                         .foregroundStyle(on ? Color.white : .ink)
@@ -180,6 +209,14 @@ struct MapScreen: View {
             }
             .padding(.horizontal, 18).padding(.vertical, 6)
         }
+    }
+
+    /// "9 of 12" on the All chip whenever some saved places aren't pinnable —
+    /// a bare "9" would read as "you have 9 places", which isn't true.
+    private func countLabel(for label: String) -> String {
+        guard label == Self.allFilter else { return "\(labelCounts[label] ?? 0)" }
+        let pinned = labelCounts.values.reduce(0, +)
+        return unmapped.isEmpty ? "\(pinned)" : "\(pinned) of \(allPlaces.count)"
     }
 
     private func dotColor(for label: String) -> Color {
@@ -227,6 +264,64 @@ struct MapScreen: View {
         if allPlaces.isEmpty {
             EmptyHint().padding(.horizontal, 24).padding(.bottom, 16)
         }
+    }
+}
+
+// MARK: - Places with no location
+
+/// The map's account of what it can't draw. Each row opens the place detail,
+/// where "Set location" lets the user drop the pin by hand.
+private struct UnmappedSheet: View {
+    let places: [CachedPlace]
+    let userLocation: CLLocation?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var detail: CachedPlace?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("These are saved to your lists, but we couldn't work out exactly where they are — so they're not on the map. Open one to set its location.")
+                        .font(.system(size: 14)).foregroundStyle(.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 4)
+
+                    ForEach(places) { place in
+                        Button { Haptics.tap(); detail = place } label: {
+                            HStack(spacing: 12) {
+                                InitialThumb(text: place.initialLetter, color: place.pinColor, size: 44, radius: 13)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(place.name).font(.display(16, .semibold))
+                                        .foregroundStyle(.ink).lineLimit(1)
+                                    Text(place.cityLabel ?? place.filterLabel)
+                                        .font(.system(size: 13)).foregroundStyle(.inkSecondary).lineLimit(1)
+                                }
+                                Spacer(minLength: 6)
+                                Image(systemName: "mappin.and.ellipse")
+                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(.appAccent)
+                            }
+                            .padding(12)
+                            .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.cardStroke))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(20)
+            }
+            .background(Color.canvas)
+            .navigationTitle("No map location")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+            .sheet(item: $detail) {
+                PlaceDetailScreen(place: $0, userLocation: userLocation)
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

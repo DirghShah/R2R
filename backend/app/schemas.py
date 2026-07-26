@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SubmitReelRequest(BaseModel):
@@ -51,6 +51,15 @@ class PlaceOut(BaseModel):
     phone: str | None = None
     business_status: str | None = None
     google_maps_url: str | None = None
+    location_source: str | None = None
+
+
+class SetPlaceLocationRequest(BaseModel):
+    """A hand-placed pin for a place the geocoder couldn't resolve."""
+
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    address: str | None = None
 
 
 class UserPlaceOut(BaseModel):

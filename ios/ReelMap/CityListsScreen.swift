@@ -315,6 +315,13 @@ private struct PlaceListCard: View {
                     }
                     Text(subtitle)
                         .font(.system(size: 13)).foregroundStyle(.inkSecondary).lineLimit(1)
+                    // Say it plainly rather than letting the place quietly miss
+                    // the map with no explanation.
+                    if place.isUnmapped {
+                        Label("No map location", systemImage: "mappin.slash")
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)
+                            .padding(.top, 3)
+                    }
                 }
                 Spacer(minLength: 6)
                 if let rating = place.rating {

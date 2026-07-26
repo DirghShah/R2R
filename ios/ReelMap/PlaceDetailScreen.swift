@@ -18,6 +18,7 @@ struct PlaceDetailScreen: View {
     @State private var confirmDelete = false
     @State private var deleting = false
     @State private var deleteError: String?
+    @State private var showLocationPicker = false
     @FocusState private var isNotesFocused: Bool
 
     private var cat: PlaceCategory { place.categoryEnum }
@@ -34,6 +35,7 @@ struct PlaceDetailScreen: View {
                         Text(s).font(.system(size: 15)).foregroundStyle(.ink).lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    if place.isUnmapped { unmappedCard }
                     if !place.tips.isEmpty { tipsCard }
                     if !place.whatToOrder.isEmpty { orderCard }
                     infoCard
@@ -72,6 +74,9 @@ struct PlaceDetailScreen: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(deleteError ?? "")
+        }
+        .sheet(isPresented: $showLocationPicker) {
+            LocationPickerScreen(place: place, userLocation: userLocation)
         }
     }
 
@@ -295,6 +300,34 @@ struct PlaceDetailScreen: View {
                 }.buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: No map location
+
+    /// Shown instead of a silent absence: geocoding declined to guess, so the
+    /// place is saved and listed but has no pin until someone sets one.
+    private var unmappedCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.slash").font(.system(size: 15)).foregroundStyle(.orange)
+                Text("No map location").font(.display(15, .semibold)).foregroundStyle(.ink)
+            }
+            Text("We couldn't work out exactly where this is, so it's saved to your lists but isn't on the map yet.")
+                .font(.system(size: 14)).foregroundStyle(.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button { Haptics.tap(); showLocationPicker = true } label: {
+                Label("Set location", systemImage: "mappin.and.ellipse")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                    .background(Color.appAccent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .strokeBorder(Color.orange.opacity(0.35)))
     }
 
     // MARK: Remove

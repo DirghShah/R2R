@@ -53,6 +53,8 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
     public let phone: String?
     public let businessStatus: String?
     public let googleMapsURL: String?
+    /// "user" when someone placed this pin by hand.
+    public let locationSource: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, category, cuisine, lat, lng, address, region, rating, photos, phone, hours
@@ -61,6 +63,7 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
         case utcOffsetMinutes = "utc_offset_minutes"
         case businessStatus = "business_status"
         case googleMapsURL = "google_maps_url"
+        case locationSource = "location_source"
     }
 }
 

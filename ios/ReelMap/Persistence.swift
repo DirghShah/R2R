@@ -23,6 +23,7 @@ final class CachedPlace {
     var phone: String?
     var businessStatus: String?
     var googleMapsURL: String?
+    var locationSource: String?
     var photos: [String] = []     // default keeps SwiftData lightweight-migration happy
     var hoursData: Data?          // JSON-encoded OpeningHours (SwiftData-safe)
     var utcOffsetMinutes: Int?
@@ -43,7 +44,7 @@ final class CachedPlace {
         lat: Double?, lng: Double?, address: String?, region: String? = nil, rating: Double?,
         reviewCount: Int? = nil, priceLevel: Int? = nil, phone: String? = nil,
         businessStatus: String? = nil, googleMapsURL: String? = nil,
-        photos: [String] = [], hoursData: Data? = nil, utcOffsetMinutes: Int? = nil,
+        locationSource: String? = nil, photos: [String] = [], hoursData: Data? = nil, utcOffsetMinutes: Int? = nil,
         reelURL: String?, summary: String?,
         tips: [String], whatToOrder: [String], vibe: [String],
         instagramHandle: String?, website: String?, hoursHint: String?,
@@ -54,6 +55,7 @@ final class CachedPlace {
         self.rating = rating
         self.reviewCount = reviewCount; self.priceLevel = priceLevel; self.phone = phone
         self.businessStatus = businessStatus; self.googleMapsURL = googleMapsURL
+        self.locationSource = locationSource
         self.photos = photos; self.hoursData = hoursData; self.utcOffsetMinutes = utcOffsetMinutes
         self.reelURL = reelURL; self.summary = summary
         self.tips = tips; self.whatToOrder = whatToOrder; self.vibe = vibe
@@ -71,6 +73,7 @@ final class CachedPlace {
             rating: dto.place.rating, reviewCount: dto.place.reviewCount,
             priceLevel: dto.place.priceLevel, phone: dto.place.phone,
             businessStatus: dto.place.businessStatus, googleMapsURL: dto.place.googleMapsURL,
+            locationSource: dto.place.locationSource,
             photos: dto.place.photos ?? [],
             hoursData: dto.place.hours.flatMap { try? JSONEncoder().encode($0) },
             utcOffsetMinutes: dto.place.utcOffsetMinutes,
@@ -127,6 +130,13 @@ final class CachedPlace {
         guard let lat, let lng else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lng)
     }
+
+    /// Geocoding returns no coordinates rather than risk a wrong pin, so a saved
+    /// place can legitimately have no map location until someone sets one.
+    var isUnmapped: Bool { coordinate == nil }
+
+    /// Someone dropped this pin by hand rather than the geocoder finding it.
+    var isUserPlaced: Bool { locationSource == "user" }
 
     /// "$", "$$", "$$$", "$$$$" — nil if unknown. Prefer Google's verified price
     /// level; fall back to the AI's guess.

@@ -95,6 +95,9 @@ class Place(Base):
     address: Mapped[str | None] = mapped_column(String, nullable=True)
     # State/province short code ("TX", "NY") — used to label city lists.
     region: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "user" once someone has placed the pin by hand; the geocoder never
+    # overwrites a hand-placed location on re-analysis.
+    location_source: Mapped[str | None] = mapped_column(String, nullable=True)
     rating: Mapped[float | None] = mapped_column(Float, nullable=True)
     review_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price_level: Mapped[int | None] = mapped_column(Integer, nullable=True)

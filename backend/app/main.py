@@ -27,6 +27,7 @@ _DEV_MIGRATIONS = [
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS utc_offset_minutes INTEGER",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS region VARCHAR",
+    "ALTER TABLE places ADD COLUMN IF NOT EXISTS location_source VARCHAR",
 ]
 
 

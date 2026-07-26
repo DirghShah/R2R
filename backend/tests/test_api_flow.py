@@ -249,3 +249,76 @@ def test_deleted_place_comes_back_if_the_reel_is_submitted_again(client):
     again = client.post("/reels", json={"url": REEL_A}).json()
     assert again["already_analyzed"] is True
     assert client.enqueued == [(reel, user)], "should re-link, not re-analyze"
+
+
+# --- hand-placed locations ------------------------------------------------
+
+
+def _unpinned(client, name: str = "Nameless Diner") -> str:
+    """Save a place the geocoder couldn't resolve; returns its UserPlace id."""
+    reel = client.post("/reels", json={"url": REEL_A}).json()["reel_id"]
+    db = session()
+    try:
+        reel_row = db.get(ReelSource, reel)
+        ep = _Extracted(name)
+        geo = pipeline.geocode.GeocodeResult(name=name, city="Dallas", country="USA")
+        place = pipeline._upsert_place(db, ep, geo)
+        pipeline._upsert_user_place(db, _first_user(), place, reel_row, ep)
+        reel_row.status = "done"
+        db.commit()
+    finally:
+        db.close()
+    return client.get("/places").json()[0]["id"]
+
+
+def test_place_with_no_coordinates_is_still_listed(client):
+    _unpinned(client)
+    saved = client.get("/places").json()
+    assert len(saved) == 1
+    assert saved[0]["place"]["lat"] is None, "the geocoder should not have guessed"
+
+
+def test_setting_a_location_by_hand_pins_the_place(client):
+    up_id = _unpinned(client)
+    body = {"lat": 32.9, "lng": -96.9, "address": "1023 E Trinity Mills Rd, Carrollton, TX 75006, USA"}
+    resp = client.patch(f"/places/{up_id}/location", json=body)
+    assert resp.status_code == 200
+
+    place = resp.json()["place"]
+    assert (place["lat"], place["lng"]) == (32.9, -96.9)
+    assert place["location_source"] == "user"
+    assert place["region"] == "TX", "region should be derived from the new address"
+    assert client.get("/places").json()[0]["place"]["lat"] == 32.9
+
+
+def test_reanalysis_never_moves_a_hand_placed_pin(client):
+    up_id = _unpinned(client)
+    client.patch(f"/places/{up_id}/location", json={"lat": 32.9, "lng": -96.9})
+
+    # The reel gets analyzed again and the geocoder still finds nothing.
+    db = session()
+    try:
+        reel_row = db.scalars(pipeline.select(ReelSource)).first()
+        ep = _Extracted("Nameless Diner")
+        geo = pipeline.geocode.GeocodeResult(name="Nameless Diner", city="Dallas", country="USA")
+        pipeline._upsert_place(db, ep, geo)
+        db.commit()
+    finally:
+        db.close()
+
+    place = client.get("/places").json()[0]["place"]
+    assert (place["lat"], place["lng"]) == (32.9, -96.9), "re-analysis clobbered the user's pin"
+
+
+def test_out_of_range_coordinates_are_rejected(client):
+    up_id = _unpinned(client)
+    assert client.patch(f"/places/{up_id}/location", json={"lat": 99.0, "lng": 0.0}).status_code == 422
+
+
+def test_cannot_set_the_location_of_someone_elses_place(client):
+    up_id = _unpinned(client)
+    other = TestClient(app)
+    token = other.post("/auth/apple", json={"identity_token": "dev:intruder"}).json()["access_token"]
+    other.headers["Authorization"] = f"Bearer {token}"
+    resp = other.patch(f"/places/{up_id}/location", json={"lat": 1.0, "lng": 1.0})
+    assert resp.status_code == 404

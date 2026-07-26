@@ -1,6 +1,8 @@
 """Read the user's saved places and auto-generated city lists."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -8,7 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import City, Collection, Place, ReelSource, User, UserPlace
-from app.schemas import CollectionOut, UserPlaceOut
+from app.schemas import CollectionOut, SetPlaceLocationRequest, UserPlaceOut
+from worker.geocode import region_from_address
 
 router = APIRouter(tags=["places"])
 
@@ -28,27 +31,57 @@ def list_places(
     if city:
         stmt = stmt.join(UserPlace.place).join(Place.city).where(City.name == city)
 
-    out: list[UserPlaceOut] = []
-    for up in db.scalars(stmt).unique():
-        out.append(
-            UserPlaceOut(
-                id=up.id,
-                place=up.place,
-                city=up.place.city.name if up.place and up.place.city else None,
-                reel_url=up.reel_source.url if up.reel_source else None,
-                description=up.description,
-                tips=up.tips,
-                what_to_order=up.what_to_order,
-                vibe=up.vibe,
-                instagram_handle=up.instagram_handle,
-                website=up.website,
-                hours_hint=up.hours_hint,
-                price_level_ai=up.price_level_ai,
-                confidence=up.confidence,
-                saved_at=up.saved_at,
-            )
-        )
-    return out
+    return [_to_out(up) for up in db.scalars(stmt).unique()]
+
+
+def _to_out(up: UserPlace) -> UserPlaceOut:
+    return UserPlaceOut(
+        id=up.id,
+        place=up.place,
+        city=up.place.city.name if up.place and up.place.city else None,
+        reel_url=up.reel_source.url if up.reel_source else None,
+        description=up.description,
+        tips=up.tips,
+        what_to_order=up.what_to_order,
+        vibe=up.vibe,
+        instagram_handle=up.instagram_handle,
+        website=up.website,
+        hours_hint=up.hours_hint,
+        price_level_ai=up.price_level_ai,
+        confidence=up.confidence,
+        saved_at=up.saved_at,
+    )
+
+
+@router.patch("/places/{user_place_id}/location", response_model=UserPlaceOut)
+def set_place_location(
+    user_place_id: str,
+    body: SetPlaceLocationRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserPlaceOut:
+    """Drop the pin by hand for a place the geocoder couldn't resolve.
+
+    Geocoding deliberately returns no coordinates rather than risk a wrong pin,
+    which leaves the place listed but off the map. This is the escape hatch.
+    """
+    up = db.scalar(
+        select(UserPlace).where(UserPlace.id == user_place_id, UserPlace.user_id == user.id)
+    )
+    if up is None or up.place is None:
+        raise HTTPException(status_code=404, detail="Place not found")
+
+    place = up.place
+    place.lat = body.lat
+    place.lng = body.lng
+    place.location_source = "user"
+    if body.address:
+        place.address = body.address
+        place.region = place.region or region_from_address(body.address)
+    place.last_verified_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(up)
+    return _to_out(up)
 
 
 @router.delete("/places/{user_place_id}", status_code=204)
