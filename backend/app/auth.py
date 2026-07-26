@@ -1,7 +1,9 @@
 """Sign in with Apple verification + app JWT issuance/validation."""
 from __future__ import annotations
 
+import hashlib
 import logging
+import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import User
+from app.models import RefreshToken, User
 
 log = logging.getLogger(__name__)
 
@@ -103,3 +105,56 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
     return user
+
+
+# --- Refresh tokens -------------------------------------------------------
+#
+# The Share Extension runs in its own process and can never present sign-in UI,
+# so when the access token expires mid-share it has no interactive way back.
+# A rotating refresh token gives it a non-interactive path.
+
+
+def _hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def issue_refresh_token(db: Session, user_id: str) -> str:
+    """Mint a refresh token, returning the raw value (stored only as a hash)."""
+    raw = secrets.token_urlsafe(48)
+    db.add(RefreshToken(
+        user_id=user_id,
+        token_hash=_hash_token(raw),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_days),
+    ))
+    db.commit()
+    return raw
+
+
+def rotate_refresh_token(db: Session, raw: str) -> tuple[str, str]:
+    """Exchange a refresh token for (access_token, new_refresh_token).
+
+    Rotates on every use: a token that is presented twice is either replayed or
+    stolen, and either way the old one must stop working.
+    """
+    row = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == _hash_token(raw)))
+    now = datetime.now(timezone.utc)
+    expires = row.expires_at if row else None
+    if expires is not None and expires.tzinfo is None:  # SQLite returns naive
+        expires = expires.replace(tzinfo=timezone.utc)
+
+    if row is None or row.revoked_at is not None or (expires and expires < now):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Session expired. Please sign in again.")
+
+    row.revoked_at = now
+    db.commit()
+    return create_access_token(row.user_id), issue_refresh_token(db, row.user_id)
+
+
+def revoke_all_refresh_tokens(db: Session, user_id: str) -> None:
+    now = datetime.now(timezone.utc)
+    for row in db.scalars(select(RefreshToken).where(
+        RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None)
+    )):
+        row.revoked_at = now
+    db.commit()

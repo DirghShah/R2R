@@ -93,11 +93,37 @@ class CollectionOut(BaseModel):
 
 class AppleAuthRequest(BaseModel):
     identity_token: str
+    # Apple returns fullName only on the very first authorization, so the
+    # client sends it once and the server keeps it.
+    display_name: str | None = None
+    # One-time code, exchanged for the refresh token we need to revoke Apple's
+    # grant when the account is deleted (Guideline 5.1.1(v)).
+    authorization_code: str | None = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 class AuthResponse(BaseModel):
     access_token: str
+    refresh_token: str | None = None
     token_type: str = "bearer"
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    display_name: str | None = None
+    avatar_color: str | None = None
+    plan: str
+    reels_this_month: int
+    created_at: datetime
+
+
+class UpdateMeRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=60)
 
 
 class RegisterDeviceRequest(BaseModel):

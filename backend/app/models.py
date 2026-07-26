@@ -41,6 +41,15 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     apple_sub: Mapped[str] = mapped_column(String, unique=True, index=True)
+    # Apple returns fullName only on the very first authorization and never in
+    # the identity token, so the client sends it once and we keep it.
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Deterministic per-user colour for initial avatars — no upload, no storage,
+    # no moderation surface.
+    avatar_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Apple refresh token, needed to revoke our access on account deletion
+    # (App Store Guideline 5.1.1(v)).
+    apple_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
     plan: Mapped[str] = mapped_column(String, default="free")  # free | pro
     reels_this_month: Mapped[int] = mapped_column(Integer, default=0)
     # Which calendar month `reels_this_month` is counting. Without it the
@@ -52,6 +61,27 @@ class User(Base):
 
     user_places: Mapped[list[UserPlace]] = relationship(back_populates="user")
     devices: Mapped[list[Device]] = relationship(back_populates="user")
+
+
+class RefreshToken(Base):
+    """Long-lived, rotating session token.
+
+    The access JWT is short-lived, but the Share Extension can never show
+    sign-in UI — so it needs a way to re-authenticate without the user. Hence a
+    refresh token rather than simply a longer JWT.
+
+    Only the hash is stored: a leaked database dump must not hand over live
+    sessions.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class ReelSource(Base):

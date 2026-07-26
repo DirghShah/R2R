@@ -22,8 +22,16 @@ class Settings(BaseSettings):
     # --- Auth ---
     jwt_secret: str = "dev-only-change-me"
     jwt_algorithm: str = "HS256"
-    jwt_expiry_hours: int = 24 * 30
+    # Short-lived access token; the refresh token carries the session.
+    jwt_expiry_hours: int = 24
+    refresh_token_days: int = 365
+    apple_client_secret_ttl_minutes: int = 30
     apple_bundle_id: str = "com.yourco.reelmap"
+    # Needed only to revoke Apple tokens on account deletion (Guideline
+    # 5.1.1(v)). Same key family as APNs but a *Sign in with Apple* key.
+    apple_team_id: str | None = None
+    apple_key_id: str | None = None
+    apple_private_key: str | None = None  # base64 of the .p8
 
     # --- AI / pipeline ---
     anthropic_api_key: str | None = None
