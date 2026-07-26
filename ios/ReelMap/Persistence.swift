@@ -85,6 +85,39 @@ final class CachedPlace {
         )
     }
 
+    /// Refresh this row from the server without replacing the object, so views
+    /// currently displaying it stay valid.
+    func update(from dto: SavedPlace) {
+        name = dto.place.name
+        category = dto.place.category
+        cuisine = dto.place.cuisine
+        lat = dto.place.lat
+        lng = dto.place.lng
+        address = dto.place.address
+        region = dto.place.region
+        rating = dto.place.rating
+        reviewCount = dto.place.reviewCount
+        priceLevel = dto.place.priceLevel
+        phone = dto.place.phone
+        businessStatus = dto.place.businessStatus
+        googleMapsURL = dto.place.googleMapsURL
+        locationSource = dto.place.locationSource
+        photos = dto.place.photos ?? []
+        hoursData = dto.place.hours.flatMap { try? JSONEncoder().encode($0) }
+        utcOffsetMinutes = dto.place.utcOffsetMinutes
+        reelURL = dto.reelURL
+        summary = dto.description
+        tips = dto.tips ?? []
+        whatToOrder = dto.whatToOrder ?? []
+        vibe = dto.vibe ?? []
+        instagramHandle = dto.instagramHandle
+        website = dto.website
+        hoursHint = dto.hoursHint
+        priceLevelAI = dto.priceLevelAI
+        city = dto.city
+        savedAt = dto.savedAt
+    }
+
     var categoryEnum: PlaceCategory { PlaceCategory(rawValue: category) ?? .other }
 
     /// "Dallas, TX" — the state comes from the geocoder, falling back to a parse
@@ -239,10 +272,17 @@ final class CachedList {
         self.init(id: dto.id, title: dto.title, category: dto.category,
                   city: dto.city, placeCount: dto.placeCount)
     }
+
+    func update(from dto: PlaceList) {
+        title = dto.title
+        category = dto.category
+        city = dto.city
+        placeCount = dto.placeCount
+    }
 }
 
-/// Pulls from the API and replaces the local cache. On network failure it leaves
-/// the existing cache intact (that's the offline path).
+/// Pulls from the API and reconciles the local cache. On network failure it
+/// leaves the existing cache intact (that's the offline path).
 ///
 /// Throttled + single-flight so switching between the Map and Lists tabs doesn't
 /// re-fetch and rewrite SwiftData on every appearance (that thrash caused jank).
@@ -261,12 +301,37 @@ enum Syncer {
         guard let places = try? await APIClient.shared.places() else { return }
         let lists = (try? await APIClient.shared.lists()) ?? []
 
-        try? context.delete(model: CachedPlace.self)
-        try? context.delete(model: CachedList.self)
-        for p in places { context.insert(CachedPlace(dto: p)) }
-        for l in lists { context.insert(CachedList(dto: l)) }
+        merge(places, context)
+        merge(lists, context)
         try? context.save()
         lastRefresh = Date()
+    }
+
+    /// Update rows in place instead of deleting and re-inserting the world.
+    ///
+    /// A refresh fires whenever a reel finishes, which routinely lands while a
+    /// place detail sheet is open — and that sheet holds one of these objects.
+    /// Wiping the store out from under it left the sheet holding a deleted
+    /// model, and churned every `@Query` view on every sync.
+    private static func merge(_ dtos: [SavedPlace], _ context: ModelContext) {
+        let existing = (try? context.fetch(FetchDescriptor<CachedPlace>())) ?? []
+        var stale = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for dto in dtos {
+            if let row = stale.removeValue(forKey: dto.id) { row.update(from: dto) }
+            else { context.insert(CachedPlace(dto: dto)) }
+        }
+        // Left over locally but gone from the server (deleted on another device).
+        for row in stale.values { context.delete(row) }
+    }
+
+    private static func merge(_ dtos: [PlaceList], _ context: ModelContext) {
+        let existing = (try? context.fetch(FetchDescriptor<CachedList>())) ?? []
+        var stale = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for dto in dtos {
+            if let row = stale.removeValue(forKey: dto.id) { row.update(from: dto) }
+            else { context.insert(CachedList(dto: dto)) }
+        }
+        for row in stale.values { context.delete(row) }
     }
 
     /// Remove a saved place everywhere: server first, then the local cache and

@@ -393,6 +393,9 @@ struct ToastView: View {
             case .added(let n):
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.appAccent)
                 Text("\(n) place\(n == 1 ? "" : "s") added to your map").font(.system(size: 14, weight: .medium))
+            case .noPlaces:
+                Image(systemName: "magnifyingglass").foregroundStyle(.inkMuted)
+                Text("No places found in that reel").font(.system(size: 14, weight: .medium))
             case .failed:
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.closedRed)
                 Text("Couldn't analyze a reel").font(.system(size: 14, weight: .medium))

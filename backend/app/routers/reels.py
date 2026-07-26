@@ -1,6 +1,8 @@
 """Submit a reel for analysis, list the user's activity feed, check status."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -58,6 +60,7 @@ def submit_reel(
         return ReelStatusResponse(reel_id=reel.id, status="pending")
 
     # --- New reel: this is the only path that costs an analysis --------------
+    _roll_quota_period(user)
     if user.plan == "free" and user.reels_this_month >= settings.free_monthly_reel_limit:
         raise HTTPException(status_code=402, detail="Monthly limit reached")
 
@@ -70,6 +73,19 @@ def submit_reel(
 
     enqueue_analyze(reel.id, user.id)
     return ReelStatusResponse(reel_id=reel.id, status=reel.status)
+
+
+def _roll_quota_period(user: User) -> None:
+    """Start a fresh count when the calendar month turns over.
+
+    Compares year/month rather than a duration so the reset lands on the 1st,
+    and so a naive timestamp from SQLite compares fine against an aware one.
+    """
+    now = datetime.now(timezone.utc)
+    start = user.quota_period_start
+    if start is None or (start.year, start.month) != (now.year, now.month):
+        user.reels_this_month = 0
+        user.quota_period_start = now
 
 
 def _record_submission(db: Session, user_id: str, reel_id: str) -> None:

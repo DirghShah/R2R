@@ -28,6 +28,7 @@ _DEV_MIGRATIONS = [
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS utc_offset_minutes INTEGER",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS region VARCHAR",
     "ALTER TABLE places ADD COLUMN IF NOT EXISTS location_source VARCHAR",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_period_start TIMESTAMPTZ",
 ]
 
 

@@ -43,6 +43,11 @@ class User(Base):
     apple_sub: Mapped[str] = mapped_column(String, unique=True, index=True)
     plan: Mapped[str] = mapped_column(String, default="free")  # free | pro
     reels_this_month: Mapped[int] = mapped_column(Integer, default=0)
+    # Which calendar month `reels_this_month` is counting. Without it the
+    # counter only ever climbs and eventually locks the user out for good.
+    quota_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user_places: Mapped[list[UserPlace]] = relationship(back_populates="user")

@@ -183,8 +183,8 @@ struct LocationPickerScreen: View {
         }
     }
 
-    /// Patch the cached row in place — a full `Syncer.refresh` would delete and
-    /// re-insert every CachedPlace, invalidating the one this view holds.
+    /// Patch the cached row directly rather than round-tripping a full refresh
+    /// just to pick up the one field we already have back from the server.
     private func apply(_ updated: SavedPlace) {
         place.lat = updated.place.lat
         place.lng = updated.place.lng

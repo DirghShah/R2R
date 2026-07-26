@@ -1,7 +1,11 @@
 import Foundation
 
 /// App-Group-backed queue for links the Share Extension couldn't submit
-/// (offline / backend unreachable). The main app drains it on launch.
+/// (offline / backend unreachable). The main app retries them on launch.
+///
+/// Reading and removing are deliberately separate operations: the extension
+/// told the user the link was saved, so nothing leaves the queue until the
+/// backend has actually accepted it.
 public enum PendingQueue {
     private static let key = "pending_reels"
     private static var store: UserDefaults {
@@ -15,9 +19,14 @@ public enum PendingQueue {
         store.set(list, forKey: key)
     }
 
-    public static func drain() -> [String] {
-        let list = store.stringArray(forKey: key) ?? []
-        store.removeObject(forKey: key)
-        return list
+    /// Links still waiting to reach the backend, oldest first.
+    public static func pending() -> [String] {
+        store.stringArray(forKey: key) ?? []
+    }
+
+    public static func remove(_ url: String) {
+        let list = pending().filter { $0 != url }
+        if list.isEmpty { store.removeObject(forKey: key) }
+        else { store.set(list, forKey: key) }
     }
 }

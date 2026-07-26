@@ -322,3 +322,50 @@ def test_cannot_set_the_location_of_someone_elses_place(client):
     other.headers["Authorization"] = f"Bearer {token}"
     resp = other.patch(f"/places/{up_id}/location", json={"lat": 1.0, "lng": 1.0})
     assert resp.status_code == 404
+
+
+# --- monthly quota --------------------------------------------------------
+
+
+def _set_quota(count: int, period_start) -> None:
+    from app.models import User
+
+    db = session()
+    try:
+        user = db.scalars(pipeline.select(User)).first()
+        user.reels_this_month = count
+        user.quota_period_start = period_start
+        db.commit()
+    finally:
+        db.close()
+
+
+def _quota() -> int:
+    from app.models import User
+
+    db = session()
+    try:
+        return db.scalars(pipeline.select(User.reels_this_month)).first()
+    finally:
+        db.close()
+
+
+def test_quota_resets_when_the_month_turns_over(client):
+    """Without a period anchor the counter only climbs and locks the user out."""
+    from datetime import datetime, timedelta, timezone
+
+    client.post("/reels", json={"url": REEL_A})
+    last_month = datetime.now(timezone.utc).replace(day=1) - timedelta(days=1)
+    _set_quota(1000, last_month)
+
+    resp = client.post("/reels", json={"url": REEL_B})
+    assert resp.status_code == 200, "a stale counter still blocked a new month"
+    assert _quota() == 1, "the counter should restart, not keep climbing"
+
+
+def test_quota_still_blocks_within_the_same_month(client):
+    from datetime import datetime, timezone
+
+    client.post("/reels", json={"url": REEL_A})
+    _set_quota(1000, datetime.now(timezone.utc))
+    assert client.post("/reels", json={"url": REEL_B}).status_code == 402
