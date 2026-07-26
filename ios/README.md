@@ -76,6 +76,40 @@ The extension is **enabled** in `project.yml`. After `xcodegen generate`:
 If the backend is unreachable at share time, the link is queued in the App
 Group and submitted automatically the next time the app opens.
 
+## Push notifications — one-time setup (paid Developer Program)
+
+Analysis finishes on the server long after the Share Extension has dismissed,
+so without push nothing tells you your pins are ready — the app only polls
+while it is open in the foreground.
+
+The phone side is wired (`PushManager` + `AppDelegate`): permission is asked
+the first time you submit a reel, the device token goes to `POST /devices`, and
+tapping a notification opens the Map and refreshes. What's left is credentials:
+
+1. **Apple Developer → Certificates, Identifiers & Profiles → Keys** → **+**,
+   tick **Apple Push Notifications service (APNs)**, download the `.p8` **once**
+   (it can't be re-downloaded). Note the **Key ID** and your **Team ID**.
+2. Put the key somewhere the backend can read it and fill in `backend/.env`:
+   ```
+   APNS_KEY_PATH=/secrets/AuthKey_ABC123.p8
+   APNS_KEY_ID=ABC123XYZ
+   APNS_TEAM_ID=YOURTEAMID
+   APNS_TOPIC=com.yourco.reelmap     # must equal the app's bundle id
+   APNS_USE_SANDBOX=true             # false for TestFlight/App Store builds
+   ```
+   With any of the first three unset the backend skips push silently, which is
+   what you want in local dev.
+3. In Xcode, confirm **Signing & Capabilities → Push Notifications** is present
+   on the `ReelMap` target (XcodeGen adds the `aps-environment` entitlement).
+
+> **Free personal team?** Push isn't available — signing fails with "Push
+> Notifications is not available". Delete the `aps-environment` line from
+> `project.yml` and everything else still builds; you just have to open the app
+> to see new pins.
+
+> The **Simulator can't receive real APNs pushes.** Test on a physical device,
+> or drag a `.apns` file onto the Simulator to fake one.
+
 ## Release checklist (before App Store)
 
 - [ ] Deploy the backend behind **HTTPS** (Fly.io/Railway/Render + managed
@@ -88,4 +122,6 @@ Group and submitted automatically the next time the app opens.
 - [ ] App icon + accent-matched launch screen; App Store screenshots/metadata.
 - [ ] Privacy policy URL (App Store requirement — the app sends shared links to
       your server for analysis).
-- [ ] Optional: APNs "pins are ready" push (backend hook already exists).
+- [ ] Switch `aps-environment` in `project.yml` from `development` to
+      `production` (TestFlight/App Store builds use the production APNs
+      gateway; a development token silently fails there).

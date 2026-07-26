@@ -4,9 +4,11 @@ import SwiftUI
 
 @main
 struct ReelMapApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
     @StateObject private var activity = ActivityStore()
+    @StateObject private var push = PushManager.shared
 
     private let container: ModelContainer = {
         // Fail-fast on schema errors; models are simple value stores.
@@ -24,9 +26,13 @@ struct ReelMapApp: App {
             }
             .tint(.appAccent)
             .environmentObject(activity)
+            .environmentObject(push)
             .task {
                 await app.start()
                 activity.resume(container.mainContext)
+                // Tokens rotate; re-register each launch or notifications
+                // quietly stop arriving.
+                await push.registerIfAuthorized()
             }
             .onChange(of: scenePhase) { _, phase in
                 // Returning from Instagram after a share lands here: refresh the

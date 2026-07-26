@@ -243,6 +243,9 @@ struct AddReelScreen: View {
             let status = try await APIClient.shared.submitReel(url: link)
             text = ""
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Ask now, not on a cold launch: the user just started something
+            // that finishes later, so "tell me when it's done" explains itself.
+            await PushManager.shared.requestOnFirstReel()
             // A reel we've already analyzed costs nothing and produces nothing
             // new — say so instead of implying a fresh analysis is running.
             notice = duplicateNotice(for: status)

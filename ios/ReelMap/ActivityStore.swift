@@ -64,6 +64,9 @@ final class ActivityStore: ObservableObject {
             do {
                 _ = try await APIClient.shared.submitReel(url: url)
                 PendingQueue.remove(url)
+                // A link shared from Instagram is exactly the case push exists
+                // for — the user isn't in the app to watch it finish.
+                await PushManager.shared.requestOnFirstReel()
             } catch let error as APIError where !error.isNetwork {
                 // The backend saw it and said no (unsupported link, over quota).
                 // Retrying forever would wedge the queue behind a dead link.

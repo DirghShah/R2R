@@ -40,6 +40,12 @@ targets:
       path: ReelMap/ReelMap.entitlements
       properties:
         com.apple.security.application-groups: [group.com.yourco.reelmap]
+        # Push ("your pins are ready"). Requires the paid Developer Program —
+        # on a free personal team signing fails with "Push Notifications is not
+        # available". Delete this line to build without it; the app still works,
+        # you just have to open it to see new pins. Switch to "production"
+        # (or use a TestFlight/App Store build) when you ship.
+        aps-environment: development
     info:
       path: ReelMap/Info.plist
       properties:

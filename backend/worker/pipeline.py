@@ -75,6 +75,10 @@ def analyze_reel(reel_id: str, user_id: str) -> dict:
         if reel.status == "done":
             count = _link_existing_to_user(db, reel, user_id)
             db.commit()
+            # Reusing a cached analysis still put new pins on this user's map —
+            # they need telling just the same as a fresh run.
+            if count > 0:
+                _notify(user_id, count, reel)
             return {"status": "done", "places": count, "cached": True}
 
         reel.status = "processing"
@@ -91,6 +95,7 @@ def analyze_reel(reel_id: str, user_id: str) -> dict:
             reel.error = str(exc)[:500]
             db.commit()
             print(f"[metrics] analyze FAILED reel={reel.canonical_id} error={reel.error}", flush=True)
+            _notify(user_id, 0, reel)
             return {"status": "failed", "error": reel.error}
 
         metrics = _log_metrics(reel, count, time.monotonic() - started, in_tok, out_tok)
@@ -319,11 +324,20 @@ def _link_existing_to_user(db, reel: ReelSource, user_id: str) -> int:
 
 
 def _notify(user_id: str, count: int, reel: ReelSource) -> None:
-    if count <= 0:
-        return
-    push.notify_user(
-        user_id,
-        title="ReelMap",
-        body=f"{count} place{'s' if count != 1 else ''} saved from your reel 📍",
-        deep_link=f"reelmap://reels/{reel.id}",
-    )
+    """Tell the phone how the reel turned out.
+
+    Every outcome notifies, including the empty and failed ones: the user
+    shared something and walked away, so silence just leaves them waiting for a
+    buzz that never comes.
+    """
+    if count > 0:
+        title = "Pins ready"
+        body = f"{count} place{'s' if count != 1 else ''} saved from your reel 📍"
+    elif reel.status == "failed":
+        title = "Couldn't analyze that reel"
+        body = "Open ReelMap to try it again."
+    else:
+        title = "No places in that reel"
+        body = "We couldn't find any venues to save from it."
+    push.notify_user(user_id, title=title, body=body,
+                     deep_link=f"reelmap://reels/{reel.id}")

@@ -115,3 +115,40 @@ def test_region_from_osm_prefers_iso_subdivision():
     assert _region_from_osm({"address": {"state": "Texas", "ISO3166-2-lvl4": "US-TX"}}) == "TX"
     # No ISO code and a verbose state name -> no label (better than "Texas, TX")
     assert _region_from_osm({"address": {"state": "Bavaria"}}) is None
+
+
+def test_notify_messages_cover_every_outcome(monkeypatch):
+    """A user who shared a reel and walked away must hear back either way."""
+    from worker import pipeline
+
+    sent = []
+    monkeypatch.setattr(pipeline.push, "notify_user",
+                        lambda user_id, **kw: sent.append(kw))
+
+    class Reel:
+        id = "r1"
+        status = "done"
+
+    reel = Reel()
+    pipeline._notify("u1", 3, reel)
+    assert "3 places" in sent[-1]["body"]
+
+    pipeline._notify("u1", 1, reel)
+    assert "1 place saved" in sent[-1]["body"], "should not say '1 places'"
+
+    pipeline._notify("u1", 0, reel)
+    assert "No places" in sent[-1]["title"]
+
+    reel.status = "failed"
+    pipeline._notify("u1", 0, reel)
+    assert "Couldn't analyze" in sent[-1]["title"]
+
+    assert all(kw["deep_link"] == "reelmap://reels/r1" for kw in sent)
+
+
+def test_push_is_a_noop_without_apns_credentials(monkeypatch):
+    """Local dev has no APNs key; that must not raise into the analysis job."""
+    from worker import push
+
+    monkeypatch.setattr(push.settings, "apns_key_path", None)
+    push.notify_user("u1", title="t", body="b")  # must not raise
