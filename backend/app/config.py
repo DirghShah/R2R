@@ -94,7 +94,15 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    # Managed Postgres (Railway/Heroku/Render) hands out "postgres://", a scheme
+    # SQLAlchemy 2.x rejects outright. Normalising here turns a confusing
+    # first-deploy crash into a non-event.
+    if s.database_url.startswith("postgres://"):
+        s.database_url = s.database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif s.database_url.startswith("postgresql://"):
+        s.database_url = s.database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return s
 
 
 settings = get_settings()
