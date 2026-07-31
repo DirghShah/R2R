@@ -92,6 +92,10 @@ with curl (step 6) first.
 - **Settings → Root Directory** → `backend`
 - **Settings → Custom Start Command** →
   `rq worker --url $REDIS_URL reels`
+- **Settings → Deploy → Healthcheck Path** → leave **empty**. A worker serves no
+  HTTP, so a healthcheck can never pass and Railway would mark every deploy
+  failed even though the worker is running fine. This is why `railway.json`
+  deliberately does *not* set one — both services share that file.
 - **Variables** → the same list as the api, **including** the
   `${{Postgres.DATABASE_URL}}` and `${{Redis.REDIS_URL}}` references. Each
   service needs its own copy; they are not shared across services.
@@ -101,8 +105,13 @@ race on the very first deploy; the entrypoint retries, so it resolves itself.
 
 ## 5. Get the domain
 
-api service → **Settings → Networking → Generate Domain**. Copy it back into
-`PUBLIC_BASE_URL` and redeploy (invite links are built from it).
+**On the api service only** — the worker never receives HTTP traffic and should
+stay unexposed.
+
+api service → **Settings → Networking → Generate Domain**. Optionally set
+**Healthcheck Path** to `/health` here (api only). Copy the domain into
+`PUBLIC_BASE_URL` on **both** services and redeploy — invite links are built
+from it.
 
 ## 6. Verify
 
