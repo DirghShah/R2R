@@ -23,15 +23,28 @@ same on Fly.io with different plumbing.
 ## 2. Add the databases
 
 In the project canvas: **+ New → Database → Add PostgreSQL**, then again for
-**Redis**. Railway injects `DATABASE_URL` and `REDIS_URL` automatically.
+**Redis**.
+
+**Adding them does NOT make them visible to your app service.** The connection
+strings live on the database services; your app has to reference them. On the
+api service → **Variables**, add:
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+```
+
+(Use whatever Railway named the services — check the canvas; usually `Postgres`
+and `Redis`.) Without this the app falls back to the localhost default, the
+migration can't connect, and the deploy dies at **Healthcheck**. The entrypoint
+now detects this and says so in the deploy log rather than failing silently.
 
 > Plain Postgres is correct. The PostGIS image in `docker-compose.yml` is
 > aspirational — the code stores lat/lng as floats.
 
 ## 3. Set the environment variables
 
-**Variables** tab on the api service. `DATABASE_URL` and `REDIS_URL` are already
-there from step 2 — don't override them.
+**Variables** tab on the api service, on top of the two references from step 2.
 
 ```
 ENVIRONMENT=prod
@@ -79,8 +92,9 @@ with curl (step 6) first.
 - **Settings → Root Directory** → `backend`
 - **Settings → Custom Start Command** →
   `rq worker --url $REDIS_URL reels`
-- **Variables** → same list as the api, plus `DATABASE_URL` / `REDIS_URL`
-  referenced from the same databases.
+- **Variables** → the same list as the api, **including** the
+  `${{Postgres.DATABASE_URL}}` and `${{Redis.REDIS_URL}}` references. Each
+  service needs its own copy; they are not shared across services.
 
 Both services run `alembic upgrade head` on boot via `entrypoint.sh`. They can
 race on the very first deploy; the entrypoint retries, so it resolves itself.
