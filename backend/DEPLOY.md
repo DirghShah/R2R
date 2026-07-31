@@ -14,8 +14,9 @@ same on Fly.io with different plumbing.
 1. <https://railway.app> → sign in with GitHub.
 2. **New Project → Deploy from GitHub repo** → pick `DirghShah/R2R`.
 3. Once the service appears: **Settings → Root Directory → `backend`**.
-   Without this, Railway looks for a Dockerfile at the repo root and the build
-   fails.
+   **This is the #1 cause of a failed build.** The repo root holds `backend/`,
+   `ios/` and `docs/` with no Dockerfile, so without this Railway cannot work
+   out what to build and fails during "Build image".
 4. **Settings → Branch** → `claude/bold-maxwell-2d4wya` (or merge to `main`
    first and deploy that).
 
