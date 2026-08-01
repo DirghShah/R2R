@@ -140,38 +140,52 @@ Check the worker log for `[entrypoint] migrations applied` and an RQ banner.
 
 ### Prove the pipeline end to end
 
-`ENVIRONMENT=prod` blocks `dev:` sign-in, so to test before the iOS auth work
-lands, temporarily set `ENVIRONMENT=dev` on **both** services, then:
+`ENVIRONMENT=prod` rejects `dev:` sign-in, which is correct — do **not** flip it
+back to `dev` to test. Mint a token from inside the container instead:
+Railway → api service → **Console** tab →
 
 ```bash
-TOKEN=$(curl -s -X POST $API/auth/apple -H 'content-type: application/json' \
-  -d '{"identity_token":"dev:me","display_name":"Dirgh"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
-AUTH="Authorization: Bearer $TOKEN"
+python scripts/dev_token.py
+```
 
-curl -s $API/me -H "$AUTH"                       # profile + avatar colour
-curl -s $API/maps -H "$AUTH"                     # personal map auto-created
+Copy the access token, then from your Mac:
 
+```bash
+API=https://<your-domain>
+AUTH="Authorization: Bearer <paste the token>"
+
+curl -s $API/me   -H "$AUTH"    # profile + avatar colour
+curl -s $API/maps -H "$AUTH"    # personal map, auto-created on first call
+
+# A real reel. This costs money (~$0.27 for 5 places) — use one you know.
 curl -s -X POST $API/reels -H "$AUTH" -H 'content-type: application/json' \
   -d '{"url":"https://www.instagram.com/reel/XXXXXXXXX/"}'
 
 sleep 60
-curl -s $API/reels -H "$AUTH"                    # status should be "done"
-curl -s $API/places -H "$AUTH"                   # pins, each tagged with map_id
+curl -s $API/reels  -H "$AUTH"   # status should be "done"
+curl -s $API/places -H "$AUTH"   # pins, each tagged with map_id
 ```
 
-Then test sharing:
+Watch the **worker** Deploy Logs while that runs — you'll see the pipeline
+stages and then the `[metrics]` cost line.
+
+Then sharing:
 
 ```bash
 MAP=$(curl -s -X POST $API/maps -H "$AUTH" -H 'content-type: application/json' \
   -d '{"name":"Dallas Eats","emoji":"🌮"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
 
-curl -s -X POST $API/maps/$MAP/invite -H "$AUTH"   # invite_url
+curl -s -X POST $API/maps/$MAP/invite -H "$AUTH"    # invite_url
 ```
 
-Open that `invite_url` in a browser — you should get the fallback landing page.
+Open that `invite_url` in a browser — you should get the fallback landing page
+with the map name on it. That is what someone without the app sees.
 
-**Set `ENVIRONMENT=prod` back afterwards.** Leaving it on `dev` means anyone who
-finds your URL can authenticate as any user by posting `dev:<anything>`.
+Clean up the smoke-test account when you're done:
+
+```bash
+curl -s -X DELETE $API/me -H "$AUTH"    # removes the user and its maps/places
+```
 
 ## 7. Watch the cost log
 
