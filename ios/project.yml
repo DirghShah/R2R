@@ -42,6 +42,11 @@ targets:
         # the credential that mints new sessions, and the Share Extension needs
         # to read it without ever being able to show sign-in UI.
         keychain-access-groups: ["$(AppIdentifierPrefix)com.yourco.reelmap"]
+        # Sign in with Apple. Enabling the capability on the App ID in the
+        # developer portal is only half of it — without this entitlement in the
+        # binary, ASAuthorizationController fails with AuthorizationError 1000
+        # ("unknown"), which says nothing about the actual cause.
+        com.apple.developer.applesignin: ["Default"]
         # Invite links open the app instead of Safari.
         com.apple.developer.associated-domains: ["applinks:$(APP_LINK_DOMAIN)"]
         # Push ("your pins are ready"). Requires the paid Developer Program —
