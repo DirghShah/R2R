@@ -240,7 +240,13 @@ public actor APIClient {
         _ path: String, method: String,
         body: (any Encodable)?, authed: Bool, isRetry: Bool = false
     ) async throws -> Data {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        // NOT appendingPathComponent: it treats the whole string as one path
+        // component and percent-encodes the "?", so any endpoint with a query
+        // string resolved to a literal "…%3Frotate=false" path and 404'd.
+        guard let url = URL(string: baseURL.absoluteString.trimmingTrailingSlash + path) else {
+            throw APIError(status: -1, message: "Bad request URL.")
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -308,6 +314,12 @@ public actor APIClient {
             return "Can't reach the ReelMap backend at this address."
         default:                      return "Network error — can't reach ReelMap."
         }
+    }
+}
+
+private extension String {
+    var trimmingTrailingSlash: String {
+        hasSuffix("/") ? String(dropLast()) : self
     }
 }
 

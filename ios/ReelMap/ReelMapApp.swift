@@ -86,23 +86,37 @@ final class AppState: ObservableObject {
             phase = .signedOut
             return
         }
-        // Users can revoke the app under Settings → Apple ID. Without checking,
-        // the app would keep a dead session and fail every request.
+
+        // Show the app immediately when we already hold an access token. The
+        // launch used to sit on a splash through two network round trips —
+        // Apple's credential check and a token refresh — before rendering
+        // anything, which is seconds of nothing on a cold start.
+        if AuthStore.token != nil {
+            phase = .signedIn
+            Task { await validateInBackground() }
+            return
+        }
+
+        // No access token, only a refresh token: we do have to wait, but this
+        // is one request, not two.
+        if (try? await APIClient.shared.refreshSession()) != nil {
+            phase = .signedIn
+            Task { await validateInBackground() }
+        } else {
+            AuthStore.signOut()
+            phase = .signedOut
+        }
+    }
+
+    /// Off the launch path: any request that 401s will refresh or sign out on
+    /// its own, so this only has to catch the case iOS can tell us about —
+    /// the user revoking the app under Settings → Apple ID.
+    private func validateInBackground() async {
         guard await AppleIDStore.isStillAuthorized() else {
             AuthStore.signOut()
             phase = .signedOut
             return
         }
-        // The access token is short-lived; trade the refresh token for a fresh
-        // one now rather than letting the first request of the session 401.
-        if AuthStore.token == nil {
-            guard (try? await APIClient.shared.refreshSession()) != nil else {
-                AuthStore.signOut()
-                phase = .signedOut
-                return
-            }
-        }
-        phase = .signedIn
     }
 }
 

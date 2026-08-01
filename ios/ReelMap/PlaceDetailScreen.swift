@@ -95,7 +95,8 @@ struct PlaceDetailScreen: View {
                 Button { dismiss() } label: { heroButton("xmark") }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(16)
+            // Extra top inset: the sheet's drag indicator sits in this strip.
+            .padding(.horizontal, 16).padding(.top, 26).padding(.bottom, 16)
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
@@ -121,15 +122,25 @@ struct PlaceDetailScreen: View {
     }
 
     /// Real venue photo (Google) with a legibility scrim, or the gradient.
+    ///
+    /// The image sits in an *overlay* on a zero-size Color rather than being a
+    /// ZStack child directly: `scaledToFill` reports the scaled-up size, which
+    /// grew the ZStack and pushed the close/share buttons and the name outside
+    /// the 210pt window, so they rendered cut off.
     @ViewBuilder private var heroBackground: some View {
         if let url = place.firstPhotoURL {
-            AsyncImage(url: url) { img in
-                img.resizable().scaledToFill()
-            } placeholder: {
-                gradient.overlay(ProgressView().tint(.white))
-            }
-            .overlay(LinearGradient(colors: [.clear, .black.opacity(0.55)],
-                                    startPoint: .center, endPoint: .bottom))
+            Color.deepGreen
+                .overlay {
+                    AsyncImage(url: url) { img in
+                        img.resizable().scaledToFill()
+                    } placeholder: {
+                        gradient.overlay(ProgressView().tint(.white))
+                    }
+                }
+                .clipped()
+                .overlay(LinearGradient(colors: [.black.opacity(0.35), .clear,
+                                                 .black.opacity(0.55)],
+                                        startPoint: .top, endPoint: .bottom))
         } else {
             gradient
         }

@@ -28,7 +28,9 @@ struct SignInScreen: View {
             .padding(.horizontal, 28)
             .padding(.bottom, 40)
         }
-        .alert("Couldn't sign in", isPresented: .init(get: { errorText != nil },
+        // Suppress a stale failure if a concurrent attempt has since succeeded —
+        // tapping OK on an error and finding yourself signed in is baffling.
+        .alert("Couldn't sign in", isPresented: .init(get: { errorText != nil && !AuthStore.isSignedIn },
                                                      set: { if !$0 { errorText = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
