@@ -90,8 +90,11 @@ with curl (step 6) first.
 **+ New → GitHub Repo → same repo.** Then on that service:
 
 - **Settings → Root Directory** → `backend`
-- **Settings → Custom Start Command** →
-  `rq worker --url $REDIS_URL reels`
+- **Settings → Custom Start Command** → `python -m worker.run`
+
+  Not `rq worker --url $REDIS_URL reels` — Railway hands the start command to
+  the container as an argument vector, so `$REDIS_URL` arrives as that literal
+  string and the worker crashes trying to resolve it as a hostname.
 - **Settings → Deploy → Healthcheck Path** → leave **empty**. A worker serves no
   HTTP, so a healthcheck can never pass and Railway would mark every deploy
   failed even though the worker is running fine. This is why `railway.json`

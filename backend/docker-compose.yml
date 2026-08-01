@@ -40,7 +40,9 @@ services:
   worker:
     build: .
     # entrypoint.sh runs migrations first; harmless if the api already did.
-    command: rq worker --url redis://redis:6379/0 reels
+    # python -m worker.run, not the rq CLI: the URL comes from app.config so
+    # there's no shell-expansion dependency in the start command.
+    command: python -m worker.run
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://reelmap:reelmap@db:5432/reelmap
