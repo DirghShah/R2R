@@ -45,14 +45,16 @@ struct ProfileSheet: View {
             } message: {
                 Text("This is what people see next to places you add to shared maps.")
             }
-            .confirmationDialog("Sign out?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            // Alerts, not confirmationDialogs: presented from inside a sheet,
+            // a dialog anchors itself as a popover bubble instead of the
+            // centred modal these destructive choices should be.
+            .alert("Sign out?", isPresented: $confirmSignOut) {
                 Button("Sign out", role: .destructive) { Task { await signOut() } }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Your places stay on your account — signing back in restores them.")
             }
-            .confirmationDialog("Delete your account?", isPresented: $confirmDelete,
-                                titleVisibility: .visible) {
+            .alert("Delete your account?", isPresented: $confirmDelete) {
                 Button("Delete everything", role: .destructive) { Task { await deleteAccount() } }
                 Button("Cancel", role: .cancel) {}
             } message: {

@@ -63,6 +63,12 @@ GOOGLE_PLACES_API_KEY=...
 APNS_KEY_CONTENT=<base64 of your AuthKey_XXXX.p8>
 APNS_KEY_ID=<from the Apple key page>
 APNS_TEAM_ID=98B96Q5HQP
+
+# Required for Universal Links. Without it the apple-app-site-association file
+# has no valid appID, iOS never associates the domain, and every invite link
+# opens Safari instead of the app.
+APPLE_TEAM_ID=98B96Q5HQP
+APPLE_BUNDLE_ID=com.yourco.reelmap
 APNS_TOPIC=com.yourco.reelmap
 APNS_USE_SANDBOX=true
 

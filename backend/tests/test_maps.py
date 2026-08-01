@@ -276,14 +276,29 @@ def test_a_personal_map_notifies_nobody_else(client, monkeypatch):
 # --- universal links ------------------------------------------------------
 
 
-def test_apple_app_site_association_is_served_for_universal_links(client):
+def test_apple_app_site_association_is_served_for_universal_links(client, monkeypatch):
     """iOS ignores this file silently if it isn't JSON at exactly this path,
     and every invite link then opens Safari instead of the app."""
+    from app.routers import links
+
+    monkeypatch.setattr(links.settings, "apple_team_id", "98B96Q5HQP")
     resp = TestClient(app).get("/.well-known/apple-app-site-association")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/json")
     details = resp.json()["applinks"]["details"][0]
     assert details["paths"] == ["/join/*"]
+    assert details["appID"].startswith("98B96Q5HQP."), "the real team id must be in the appID"
+
+
+def test_association_file_refuses_to_serve_without_a_team_id(client, monkeypatch):
+    """A placeholder appID is worse than none: iOS caches the mismatch and every
+    invite link opens Safari permanently, with nothing to explain why."""
+    from app.routers import links
+
+    monkeypatch.setattr(links.settings, "apple_team_id", None)
+    resp = TestClient(app).get("/.well-known/apple-app-site-association")
+    assert resp.status_code == 503
+    assert "APPLE_TEAM_ID" in resp.json()["error"]
 
 
 def test_invite_link_has_a_web_fallback_for_people_without_the_app(client):

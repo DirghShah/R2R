@@ -8,6 +8,7 @@ Store.
 from __future__ import annotations
 
 import html
+import logging
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -19,6 +20,8 @@ from app.db import get_db
 from app.maps import member_count
 from app.models import Map, User
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(tags=["links"])
 
 
@@ -29,7 +32,21 @@ def apple_app_site_association() -> JSONResponse:
     Must be served as JSON with no redirect and no .json extension, or iOS
     silently ignores it and every invite link opens Safari instead.
     """
-    app_id = f"{settings.apple_team_id or 'TEAMID'}.{settings.apple_bundle_id}"
+    if not settings.apple_team_id:
+        # Serving a placeholder team id is worse than serving nothing: iOS
+        # fetches this once, caches the mismatch, and every invite link opens
+        # Safari for good — with no error anywhere to explain why.
+        log.error(
+            "APPLE_TEAM_ID is not set — refusing to serve apple-app-site-association. "
+            "Universal Links will not work until it is."
+        )
+        return JSONResponse(
+            {"error": "APPLE_TEAM_ID is not configured on this server."},
+            status_code=503,
+            media_type="application/json",
+        )
+
+    app_id = f"{settings.apple_team_id}.{settings.apple_bundle_id}"
     return JSONResponse(
         {
             "applinks": {

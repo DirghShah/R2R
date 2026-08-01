@@ -46,8 +46,12 @@ final class MapStore: ObservableObject {
     @discardableResult
     func create(name: String, emoji: String?) async throws -> MapSummary {
         let created = try await APIClient.shared.createMap(name: name, emoji: emoji)
-        await refresh()
+        // Show it immediately and reconcile in the background — waiting on a
+        // second round trip before the sheet closes is the difference between
+        // "instant" and "laggy".
+        maps.append(created)
         currentID = created.id
+        Task { await refresh() }
         return created
     }
 
@@ -59,15 +63,17 @@ final class MapStore: ObservableObject {
     /// Owner deletes for everyone; a member leaves. The UI must say which.
     func deleteOrLeave(_ map: MapSummary) async throws {
         try await APIClient.shared.deleteOrLeaveMap(id: map.id)
-        if currentID == map.id { currentID = nil }
-        await refresh()
+        maps.removeAll { $0.id == map.id }
+        if currentID == map.id { currentID = (personal ?? maps.first)?.id }
+        Task { await refresh() }
     }
 
     @discardableResult
     func join(code: String) async throws -> MapSummary {
         let joined = try await APIClient.shared.joinMap(code: code)
-        await refresh()
+        if !maps.contains(where: { $0.id == joined.id }) { maps.append(joined) }
         currentID = joined.id
+        Task { await refresh() }
         return joined
     }
 }

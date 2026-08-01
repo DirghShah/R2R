@@ -97,6 +97,9 @@ struct CityListsScreen: View {
                 .scrollIndicators(.hidden)
             }
         }
+        // Not forced: MapScreen's .task usually got here first, and the
+        // single-flight guard in Syncer means this is a no-op rather than a
+        // second round trip.
         .task { await Syncer.refresh(context) }
         .refreshable { await Syncer.refresh(context, force: true) }
         .sheet(item: $selected) {

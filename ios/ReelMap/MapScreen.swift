@@ -18,27 +18,39 @@ struct MapScreen: View {
     @State private var didCenterOnUser = false
     @State private var region: MKCoordinateRegion?
 
-    /// Only the current map's pins. `/places` returns every map the user belongs
-    /// to in one response and the filtering happens here.
-    private var allPlaces: [CachedPlace] {
-        guard let mapID = maps.currentID else { return cachedPlaces }
-        return cachedPlaces.filter { $0.mapID == mapID }
+    /// Everything derived from the cache, computed once per render instead of
+    /// re-filtering for each consumer.
+    private struct Scoped {
+        var all: [CachedPlace] = []
+        var pinned: [CachedPlace] = []
+        var unmapped: [CachedPlace] = []
+        var labelCounts: [String: Int] = [:]
     }
 
-    /// Saved places the geocoder couldn't resolve — they can't be drawn, so the
-    /// map has to account for them somewhere or they just silently vanish.
-    private var unmapped: [CachedPlace] { allPlaces.filter(\.isUnmapped) }
+    private var scoped: Scoped {
+        let mapID = maps.currentID
+        var out = Scoped()
+        out.all = mapID == nil ? cachedPlaces : cachedPlaces.filter { $0.mapID == mapID }
+        for place in out.all {
+            if place.coordinate != nil {
+                out.pinned.append(place)
+                out.labelCounts[place.filterLabel, default: 0] += 1
+            } else {
+                out.unmapped.append(place)
+            }
+        }
+        return out
+    }
+
+    private var allPlaces: [CachedPlace] { scoped.all }
+    private var unmapped: [CachedPlace] { scoped.unmapped }
 
     private static let allFilter = "All"
 
     /// "All" + the distinct cuisine/venue labels currently on the map, in order of
     /// how many places carry them (most common first) — so the chips reflect the
     /// user's actual saved reels, not a fixed list.
-    private var labelCounts: [String: Int] {
-        var counts: [String: Int] = [:]
-        for p in allPlaces where p.coordinate != nil { counts[p.filterLabel, default: 0] += 1 }
-        return counts
-    }
+    private var labelCounts: [String: Int] { scoped.labelCounts }
 
     private var filterOptions: [String] {
         let counts = labelCounts
@@ -47,9 +59,9 @@ struct MapScreen: View {
     }
 
     private var pins: [CachedPlace] {
-        allPlaces.filter {
-            $0.coordinate != nil && (filter == Self.allFilter || $0.filterLabel == filter)
-        }
+        let pinned = scoped.pinned
+        guard filter != Self.allFilter else { return pinned }
+        return pinned.filter { $0.filterLabel == filter }
     }
 
     // MARK: Clustering (group nearby pins by a zoom-scaled grid)

@@ -322,11 +322,11 @@ enum Syncer {
         isRefreshing = true
         defer { isRefreshing = false }
 
+        // Only /places. /lists used to be fetched here and cached into
+        // CachedList, which no view has ever rendered — a wasted round trip on
+        // every single refresh, and refreshes are frequent.
         guard let places = try? await APIClient.shared.places() else { return }
-        let lists = (try? await APIClient.shared.lists()) ?? []
-
         merge(places, context)
-        merge(lists, context)
         try? context.save()
         lastRefresh = Date()
     }

@@ -258,10 +258,18 @@ public actor APIClient {
         // Harmless normally; when API_BASE_URL is an ngrok tunnel it skips the
         // free-tier browser interstitial that would otherwise break API calls.
         req.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        let started = Date()
         let data: Data
         let resp: URLResponse
         do {
             (data, resp) = try await session.data(for: req)
+            #if DEBUG
+            // Timing on every call: "the app feels slow" is unfixable without
+            // knowing whether it's the network, the server, or our own layout.
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            print("[api] \(method) \(path) → \(code) in \(ms)ms")
+            #endif
         } catch let e as URLError {
             // "The network connection was lost" (-1005) & friends are frequently
             // transient against a LAN dev server — retry once, then report honestly.

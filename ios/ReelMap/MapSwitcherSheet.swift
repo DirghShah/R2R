@@ -133,55 +133,75 @@ struct CreateMapSheet: View {
     @State private var errorText: String?
     @FocusState private var focused: Bool
 
-    private let suggestions = ["📍", "🌮", "🍜", "☕️", "🍸", "🗽", "🏖️", "🍰"]
+    private let suggestions = ["📍", "🌮", "🍜", "☕️", "🍸", "🗽", "🏖️", "🍰", "🍕", "🍦"]
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("NAME").font(.system(size: 11, weight: .semibold))
-                            .tracking(0.4).foregroundStyle(.inkMuted)
-                        TextField("", text: $name,
-                                  prompt: Text("NYC trip, Date nights…").foregroundColor(.inkMuted))
-                            .font(.system(size: 16)).foregroundStyle(.ink)
-                            .focused($focused)
-                            .padding(14)
-                            .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color.cardStroke))
-                    }
+            // No ScrollView: the content is short and fixed, and scrolling a
+            // half-height sheet with a keyboard up just fights the user.
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("NAME").font(.system(size: 11, weight: .semibold))
+                        .tracking(0.4).foregroundStyle(.inkMuted)
+                    TextField("", text: $name,
+                              prompt: Text("NYC trip, Date nights…").foregroundColor(.inkMuted))
+                        .font(.system(size: 16)).foregroundStyle(.ink)
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { if !trimmed.isEmpty { Task { await create() } } }
+                        .padding(14)
+                        .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.cardStroke))
+                }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("ICON").font(.system(size: 11, weight: .semibold))
-                            .tracking(0.4).foregroundStyle(.inkMuted)
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("ICON").font(.system(size: 11, weight: .semibold))
+                        .tracking(0.4).foregroundStyle(.inkMuted)
+                    // Horizontally scrollable: ten 44pt tiles are wider than any
+                    // iPhone, so a fixed HStack clipped the last few.
+                    ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(suggestions, id: \.self) { option in
                                 Button { Haptics.select(); emoji = option } label: {
-                                    Text(option).font(.system(size: 22))
-                                        .frame(width: 44, height: 44)
+                                    Text(option).font(.system(size: 21))
+                                        .frame(width: 46, height: 46)
                                         .background(emoji == option ? Color.appAccent.opacity(0.15) : Color.cardFill,
-                                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .strokeBorder(emoji == option ? Color.appAccent : Color.cardStroke))
+                                                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                            .strokeBorder(emoji == option ? Color.appAccent : Color.cardStroke,
+                                                          lineWidth: emoji == option ? 1.6 : 1))
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(.horizontal, 1)
                     }
-                    Spacer(minLength: 0)
+                    .scrollClipDisabled()
                 }
-                .padding(20)
+
+                Button { Task { await create() } } label: {
+                    HStack(spacing: 8) {
+                        if working { ProgressView().tint(.white) }
+                        Text(working ? "Creating…" : "Create map")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 15)
+                    .background(Color.appAccent, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(trimmed.isEmpty || working)
+                .opacity(trimmed.isEmpty ? 0.5 : 1)
+
+                Spacer(minLength: 0)
             }
+            .padding(20)
+            .frame(maxHeight: .infinity, alignment: .top)
             .background(Color.canvas)
             .navigationTitle("New map")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(working ? "Creating…" : "Create") { Task { await create() } }
-                        .disabled(trimmed.isEmpty || working)
-                }
             }
             .onAppear { focused = true }
             .alert("Couldn't create map", isPresented: .init(get: { errorText != nil },
@@ -189,12 +209,15 @@ struct CreateMapSheet: View {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
         }
-        .presentationDetents([.medium])
+        // Sized to the content rather than a generic .medium, which left a
+        // large empty gap under the fields.
+        .presentationDetents([.height(360)])
     }
 
     private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private func create() async {
+        guard !trimmed.isEmpty, !working else { return }
         working = true
         defer { working = false }
         do {
