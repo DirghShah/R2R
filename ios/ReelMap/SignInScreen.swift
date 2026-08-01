@@ -93,6 +93,7 @@ struct SignInScreen: View {
             .padding(.top, 16)
     }
 
+    @MainActor
     private func handle(_ result: Result<ASAuthorization, Error>) {
         switch result {
         case .failure(let error):
@@ -114,7 +115,7 @@ struct SignInScreen: View {
 
             AppleIDStore.userID = credential.user
             working = true
-            Task {
+            Task { @MainActor in
                 defer { working = false }
                 do {
                     try await APIClient.shared.signInWithApple(
