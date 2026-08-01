@@ -24,7 +24,11 @@ struct ReelMapApp: App {
                 case .loading:
                     SplashView()
                 case .signedOut:
-                    SignInScreen { Task { await signedIn() } }
+                    // Flip one flag and nothing else. Routing the whole session
+                    // startup back through the App struct from a captured
+                    // closure is exactly the kind of thing that quietly does
+                    // nothing; the phase change below drives the rest.
+                    SignInScreen { app.phase = .signedIn }
                 case .signedIn:
                     RootView()
                 }
@@ -33,9 +37,12 @@ struct ReelMapApp: App {
             .environmentObject(activity)
             .environmentObject(push)
             .environmentObject(maps)
-            .task {
-                await app.start()
-                if app.phase == .signedIn { await startSession() }
+            .task { await app.start() }
+            .onChange(of: app.phase) { _, phase in
+                // Single place that reacts to becoming signed in — whether that
+                // came from launch, a fresh sign-in, or re-auth.
+                guard phase == .signedIn else { return }
+                Task { await startSession() }
             }
             .onReceive(NotificationCenter.default.publisher(for: SessionExpiry.didExpire)) { _ in
                 // A refresh failed: the session is genuinely gone. Show sign-in
@@ -56,11 +63,6 @@ struct ReelMapApp: App {
             }
         }
         .modelContainer(container)
-    }
-
-    private func signedIn() async {
-        app.phase = .signedIn
-        await startSession()
     }
 
     private func startSession() async {

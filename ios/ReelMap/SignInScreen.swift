@@ -34,6 +34,15 @@ struct SignInScreen: View {
         } message: {
             Text(errorText ?? "")
         }
+        .task {
+            // Recovery: if a previous attempt stored a session but the screen
+            // never advanced, don't strand the user on a sign-in page they've
+            // already completed.
+            if AuthStore.isSignedIn {
+                print("[signin] session already present — continuing")
+                onSignedIn()
+            }
+        }
     }
 
     private var hero: some View {
@@ -68,21 +77,32 @@ struct SignInScreen: View {
         }
     }
 
-    private var signInButton: some View {
-        SignInWithAppleButton(.signIn) { request in
-            // fullName arrives ONLY on the very first authorization for this
-            // Apple ID, and never inside the identity token — so we ask for it
-            // here and forward it once.
-            request.requestedScopes = [.fullName]
-        } onCompletion: { result in
-            handle(result)
+    @ViewBuilder private var signInButton: some View {
+        // No overlay on the button: SignInWithAppleButton is a bridged UIKit
+        // control, and anything layered over it competes for the touch — which
+        // is why it took several taps to register. The progress state is a
+        // sibling instead.
+        if working {
+            HStack(spacing: 10) {
+                ProgressView().tint(.inkSecondary)
+                Text("Signing in…").font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.inkSecondary)
+            }
+            .frame(maxWidth: .infinity).frame(height: 52)
+            .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else {
+            SignInWithAppleButton(.signIn) { request in
+                // fullName arrives ONLY on the very first authorization for
+                // this Apple ID, and never inside the identity token — so we
+                // ask for it here and forward it once.
+                request.requestedScopes = [.fullName]
+            } onCompletion: { result in
+                handle(result)
+            }
+            .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
+            .frame(height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
-        .frame(height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .disabled(working)
-        .opacity(working ? 0.5 : 1)
-        .overlay { if working { ProgressView().tint(.inkSecondary) } }
     }
 
     private var footnote: some View {
@@ -99,7 +119,15 @@ struct SignInScreen: View {
         case .failure(let error):
             // Cancelling isn't an error worth an alert.
             if (error as? ASAuthorizationError)?.code == .canceled { return }
-            errorText = error.localizedDescription
+            print("[signin] apple failed: \(error)")
+            if (error as? ASAuthorizationError)?.code == .unknown {
+                // Error 1000. Apple gives no detail, but the two real causes are
+                // a missing entitlement (fixed) and re-requesting too soon after
+                // a previous attempt.
+                errorText = "Apple couldn't complete the sign-in. Wait a moment and try again — and check you're signed into iCloud in Settings."
+            } else {
+                errorText = error.localizedDescription
+            }
 
         case .success(let auth):
             guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
@@ -118,12 +146,22 @@ struct SignInScreen: View {
             Task { @MainActor in
                 defer { working = false }
                 do {
+                    print("[signin] apple ok, exchanging with backend…")
                     try await APIClient.shared.signInWithApple(
                         identityToken: identityToken, displayName: name, authorizationCode: code)
+                    print("[signin] backend accepted; token stored=\(AuthStore.token != nil), refresh stored=\(AuthStore.refreshToken != nil)")
                     _ = try? await APIClient.shared.me()  // caches our own user id
                     onSignedIn()
+                } catch let apiError as APIError {
+                    // Apple worked; our server said no. Distinguishing the two
+                    // halves matters — they have completely different fixes.
+                    print("[signin] backend rejected: status=\(apiError.status) \(apiError.message)")
+                    errorText = apiError.isNetwork
+                        ? "\(apiError.message)\n\nApple signed you in, but ReelMap's server couldn't be reached."
+                        : "ReelMap's server rejected the sign-in.\n\n\(apiError.message)"
                 } catch {
-                    errorText = error.localizedDescription
+                    print("[signin] unexpected failure: \(error)")
+                    errorText = "Signed in with Apple, but something went wrong afterwards.\n\n\(error.localizedDescription)"
                 }
             }
         }
