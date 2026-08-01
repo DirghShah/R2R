@@ -133,33 +133,55 @@ def delete_account(
         apple.revoke(user.apple_refresh_token)
 
     user_id = user.id
+    owned_map_ids = list(db.scalars(select(Map.id).where(Map.owner_id == user_id)))
 
-    # Maps this user owns go entirely, along with their pins and memberships:
-    # leaving them behind would orphan other members on a map with no owner.
-    owned = list(db.scalars(select(Map).where(Map.owner_id == user_id)))
-    for m in owned:
-        for up in db.scalars(select(UserPlace).where(UserPlace.map_id == m.id)):
+    # Each phase is flushed before the next. SQLAlchemy orders deletes using ORM
+    # *relationships*, and most of these tables reference users by a plain
+    # foreign key with no relationship declared — so left to its own devices it
+    # emits DELETE FROM users first and Postgres rejects the whole transaction.
+    # Explicit flushes make the order ours rather than inferred.
+
+    # 1. Pins. Those on maps this user owns go with the map. Those they added to
+    #    *other people's* maps stay — they belong to that shared map now, not to
+    #    whoever happened to add them — so reassign attribution to the map owner
+    #    rather than leaving a dangling reference.
+    for up in db.scalars(
+        select(UserPlace).where(
+            (UserPlace.user_id == user_id) | (UserPlace.map_id.in_(owned_map_ids))
+        )
+    ):
+        if up.map_id in owned_map_ids:
             db.delete(up)
-        for member in db.scalars(select(MapMember).where(MapMember.map_id == m.id)):
-            db.delete(member)
-    db.flush()
-
-    # Pins this user added to *other people's* maps stay — they belong to that
-    # shared map now, not to the person who happened to add them. Reassign the
-    # attribution so the row doesn't point at a deleted user.
-    for up in db.scalars(select(UserPlace).where(UserPlace.user_id == user_id)):
-        owner_id = db.get(Map, up.map_id).owner_id if up.map_id else None
+            continue
+        owner_id = db.scalar(select(Map.owner_id).where(Map.id == up.map_id))
         if owner_id and owner_id != user_id:
             up.user_id = owner_id
         else:
             db.delete(up)
     db.flush()
 
-    for m in owned:
+    # 2. Memberships: this user's everywhere, plus everyone else's on their maps.
+    for member in db.scalars(
+        select(MapMember).where(
+            (MapMember.user_id == user_id) | (MapMember.map_id.in_(owned_map_ids))
+        )
+    ):
+        db.delete(member)
+    db.flush()
+
+    # 3. The maps themselves, now that nothing points at them.
+    for m in db.scalars(select(Map).where(Map.id.in_(owned_map_ids))):
         db.delete(m)
-    for model in (UserReel, Collection, Device, RefreshToken, MapMember):
+    db.flush()
+
+    # 4. Everything else hanging off the user.
+    for model in (UserReel, Collection, Device, RefreshToken):
         for row in db.scalars(select(model).where(model.user_id == user_id)):
             db.delete(row)
+    db.flush()
+
+    # 5. Finally the user. Shared canonical rows (Place, ReelSource, City) are
+    #    deliberately kept — they belong to no one user.
     db.delete(user)
     db.commit()
     return Response(status_code=204)

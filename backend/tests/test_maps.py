@@ -301,3 +301,42 @@ def test_a_dead_invite_link_renders_a_real_page_not_a_stack_trace(client):
     page = TestClient(app).get("/join/DEADLINK")
     assert page.status_code == 404
     assert "no longer valid" in page.text
+
+
+# --- account deletion with shared maps ------------------------------------
+
+
+def test_deleting_an_account_keeps_its_pins_on_other_peoples_maps(client):
+    """A pin added to a shared map belongs to that map, not to whoever added
+    it — deleting your account must not silently gut your friends' maps."""
+    trip = client.post("/maps", json={"name": "Shared"}).json()
+    code = client.post(f"/maps/{trip['id']}/invite").json()["invite_code"]
+    friend = _user("dev:departing")
+    friend.post(f"/maps/join/{code}")
+
+    reel = friend.post("/reels", json={"url": REEL_B, "map_id": trip["id"]}).json()["reel_id"]
+    _analyze(reel, _user_id(friend), ["Kung Fu Tea"], map_id=trip["id"])
+    assert len([p for p in client.get("/places").json() if p["map_id"] == trip["id"]]) == 1
+
+    assert friend.delete("/me").status_code == 204
+
+    # The pin survives, re-attributed to the map owner rather than dangling.
+    remaining = [p for p in client.get("/places").json() if p["map_id"] == trip["id"]]
+    assert len(remaining) == 1, "the departing member's pin was lost"
+    assert remaining[0]["added_by_id"] == _user_id(client)
+    assert len(client.get(f"/maps/{trip['id']}/members").json()) == 1
+
+
+def test_deleting_an_owner_removes_the_shared_map_for_everyone(client):
+    """The alternative — a map with no owner — is worse than losing it."""
+    trip = client.post("/maps", json={"name": "Doomed"}).json()
+    code = client.post(f"/maps/{trip['id']}/invite").json()["invite_code"]
+    friend = _user("dev:survivor")
+    friend.post(f"/maps/join/{code}")
+    assert any(m["id"] == trip["id"] for m in friend.get("/maps").json())
+
+    assert client.delete("/me").status_code == 204
+
+    assert not any(m["id"] == trip["id"] for m in friend.get("/maps").json())
+    # ...and the survivor still has their own personal map.
+    assert len(friend.get("/maps").json()) == 1
