@@ -31,9 +31,11 @@ final class ShareViewController: UIViewController {
             return finish(after: 1.6)
         }
         do {
-            // Submit under the shared session; the reel now appears in the
-            // user's activity feed (GET /reels), which the app polls on open.
-            _ = try await APIClient.shared.submitReel(url: link)
+            // Submit under the shared session, into whichever map the user last
+            // had open. No picker here on purpose: this is the one-tap path the
+            // app exists for, so the destination is shown rather than asked.
+            _ = try await APIClient.shared.submitReel(url: link, mapID: CurrentMap.id)
+            state.mapName = CurrentMap.name
             state.phase = .saved
             finish(after: 0.9)
         } catch {
@@ -78,6 +80,7 @@ final class ShareViewController: UIViewController {
 final class ShareState: ObservableObject {
     enum Phase { case working, saved, offline, failed, unsupported }
     @Published var phase: Phase = .working
+    @Published var mapName: String?
 }
 
 private struct ShareConfirmView: View {
@@ -92,6 +95,10 @@ private struct ShareConfirmView: View {
             case .saved:
                 icon("checkmark.circle.fill", .green)
                 Text("Analyzing — pins coming up").font(.headline)
+                if let name = state.mapName {
+                    Text("Saving to \(name)")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
             case .offline:
                 icon("wifi.slash", .orange)
                 Text("Can't reach ReelMap").font(.headline)

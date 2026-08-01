@@ -62,7 +62,7 @@ final class ActivityStore: ObservableObject {
     private func submitQueuedLinks() async {
         for url in PendingQueue.pending() {
             do {
-                _ = try await APIClient.shared.submitReel(url: url)
+                _ = try await APIClient.shared.submitReel(url: url, mapID: CurrentMap.id)
                 PendingQueue.remove(url)
                 // A link shared from Instagram is exactly the case push exists
                 // for — the user isn't in the app to watch it finish.

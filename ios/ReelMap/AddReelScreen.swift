@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AddReelScreen: View {
     @EnvironmentObject private var store: ActivityStore
+    @EnvironmentObject private var maps: MapStore
     @Environment(\.modelContext) private var context
     @FocusState private var focused: Bool
 
@@ -21,7 +22,15 @@ struct AddReelScreen: View {
                         .font(.system(size: 13, weight: .semibold)).tracking(0.4)
                         .foregroundStyle(.linkBlue)
                     Text("Analyze a Reel").font(.display(30, .bold)).foregroundStyle(.ink)
-                        .padding(.bottom, 16)
+                    // Say where the pins will land — with multiple maps, an
+                    // unlabelled destination is a guessing game.
+                    if let map = maps.current {
+                        Label("Saving to \(map.emoji ?? "📍") \(map.name)",
+                              systemImage: "arrow.down.right.circle")
+                            .font(.system(size: 13)).foregroundStyle(.inkSecondary)
+                            .padding(.top, 2)
+                    }
+                    Color.clear.frame(height: 16)
 
                     inputCard
                     if let processing { analyzingNow(processing).padding(.top, 20) }
@@ -240,7 +249,7 @@ struct AddReelScreen: View {
         submitting = true
         defer { submitting = false }
         do {
-            let status = try await APIClient.shared.submitReel(url: link)
+            let status = try await APIClient.shared.submitReel(url: link, mapID: maps.currentID)
             text = ""
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             // Ask now, not on a cold launch: the user just started something

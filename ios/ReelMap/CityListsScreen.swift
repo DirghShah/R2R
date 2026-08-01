@@ -4,7 +4,8 @@ import SwiftUI
 
 struct CityListsScreen: View {
     @Environment(\.modelContext) private var context
-    @Query(sort: \CachedPlace.savedAt, order: .reverse) private var places: [CachedPlace]
+    @EnvironmentObject private var maps: MapStore
+    @Query(sort: \CachedPlace.savedAt, order: .reverse) private var cachedPlaces: [CachedPlace]
     @Query private var marks: [PlaceMark]
     @StateObject private var location = LocationManager()
 
@@ -28,6 +29,12 @@ struct CityListsScreen: View {
     }
 
     private var visitedIDs: Set<String> { Set(marks.filter(\.visited).map(\.placeID)) }
+
+    /// Scoped to the map you're looking at; the response carries all of them.
+    private var places: [CachedPlace] {
+        guard let mapID = maps.currentID else { return cachedPlaces }
+        return cachedPlaces.filter { $0.mapID == mapID }
+    }
 
     private var filtered: [CachedPlace] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -65,6 +72,7 @@ struct CityListsScreen: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        MapHeaderBar().padding(.top, 6).padding(.bottom, 4)
                         header
                         searchBar
                         if cities.isEmpty {
@@ -79,7 +87,8 @@ struct CityListsScreen: View {
                                     expanded: expanded.contains(city.name),
                                     toggle: { toggle(city.name) },
                                     openPlace: { Haptics.tap(); selected = $0 },
-                                    deletePlace: { pendingDelete = $0 })
+                                    deletePlace: { pendingDelete = $0 },
+                                    showsAttribution: maps.current?.isShared ?? false)
                             }
                         }
                     }
@@ -90,7 +99,10 @@ struct CityListsScreen: View {
         }
         .task { await Syncer.refresh(context) }
         .refreshable { await Syncer.refresh(context, force: true) }
-        .sheet(item: $selected) { PlaceDetailScreen(place: $0, userLocation: location.current) }
+        .sheet(item: $selected) {
+            PlaceDetailScreen(place: $0, userLocation: location.current,
+                              showsAttribution: maps.current?.isShared ?? false)
+        }
         .confirmationDialog("Remove \(pendingDelete?.name ?? "this place")?",
                             isPresented: .init(get: { pendingDelete != nil },
                                                set: { if !$0 { pendingDelete = nil } }),
@@ -205,6 +217,7 @@ private struct CityRow: View {
     let toggle: () -> Void
     let openPlace: (CachedPlace) -> Void
     let deletePlace: (CachedPlace) -> Void
+    let showsAttribution: Bool
 
     private var shareText: String {
         let lines = places.map { p -> String in
@@ -249,7 +262,8 @@ private struct CityRow: View {
                                       visited: visitedIDs.contains(place.id),
                                       userLocation: userLocation,
                                       open: { openPlace(place) },
-                                      delete: { deletePlace(place) })
+                                      delete: { deletePlace(place) },
+                                      showsAttribution: showsAttribution)
                     }
                 }
                 .padding(.horizontal, 14).padding(.bottom, 8)
@@ -267,6 +281,7 @@ private struct PlaceListCard: View {
     let userLocation: CLLocation?
     let open: () -> Void
     let delete: () -> Void
+    var showsAttribution: Bool = false
     private var tint: Color { place.pinColor }
 
     /// "Italian · Downtown · 0.3 mi" — cuisine, area, then distance when known.
@@ -321,6 +336,12 @@ private struct PlaceListCard: View {
                         Label("No map location", systemImage: "mappin.slash")
                             .font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)
                             .padding(.top, 3)
+                    }
+                    // Only in shared maps: a personal map has one contributor,
+                    // so naming them every time is just noise.
+                    if showsAttribution, place.addedBySomeoneElse {
+                        AddedByChip(name: place.addedByName, colorHex: place.addedByColor)
+                            .padding(.top, 4)
                     }
                 }
                 Spacer(minLength: 6)

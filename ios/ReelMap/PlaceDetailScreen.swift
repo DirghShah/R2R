@@ -8,6 +8,9 @@ struct PlaceDetailScreen: View {
     let place: CachedPlace
     var userLocation: CLLocation? = nil
     var detents: Set<PresentationDetent> = [.large]
+    /// Only true in shared maps — in a personal map there's one contributor, so
+    /// naming them on every card is noise.
+    var showsAttribution: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -39,6 +42,7 @@ struct PlaceDetailScreen: View {
                     if !place.tips.isEmpty { tipsCard }
                     if !place.whatToOrder.isEmpty { orderCard }
                     infoCard
+                    if showsAttribution, let name = place.addedByName { addedByCard(name) }
                     visitedCard
                     sourcedFrom
                     actions
@@ -300,6 +304,19 @@ struct PlaceDetailScreen: View {
                 }.buttonStyle(.plain)
             }
         }
+    }
+
+    private func addedByCard(_ name: String) -> some View {
+        HStack(spacing: 11) {
+            InitialAvatar(name: name, colorHex: place.addedByColor, size: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Added by").font(.system(size: 13)).foregroundStyle(.inkMuted)
+                Text(place.addedBySomeoneElse ? name : "You")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.ink)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 15).padding(.vertical, 12).card(20)
     }
 
     // MARK: No map location

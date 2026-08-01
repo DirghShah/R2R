@@ -70,6 +70,13 @@ public struct Place: Codable, Identifiable, Hashable, Sendable {
 public struct SavedPlace: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let place: Place
+    /// Which map this pin lives on. Every map the user belongs to comes back in
+    /// one response and the client filters locally.
+    public let mapID: String
+    /// Who added it — "Priya added Kung Fu Tea" in a shared map.
+    public let addedByID: String?
+    public let addedByName: String?
+    public let addedByColor: String?
     public let city: String?
     public let reelURL: String?
     public let description: String?
@@ -85,6 +92,10 @@ public struct SavedPlace: Codable, Identifiable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, place, city, description, tips, confidence, vibe, website
+        case mapID = "map_id"
+        case addedByID = "added_by_id"
+        case addedByName = "added_by_name"
+        case addedByColor = "added_by_color"
         case reelURL = "reel_url"
         case whatToOrder = "what_to_order"
         case instagramHandle = "instagram_handle"
@@ -145,5 +156,123 @@ public struct ReelActivity: Codable, Identifiable, Hashable, Sendable {
         case thumbnailURL = "thumbnail_url"
         case placeCount = "place_count"
         case createdAt = "created_at"
+    }
+}
+
+// MARK: - Identity
+
+public struct AuthSession: Codable, Sendable {
+    public let accessToken: String
+    /// Absent only on responses that don't rotate it.
+    public let refreshToken: String?
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+    }
+}
+
+public struct UserProfile: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let displayName: String?
+    /// Generated server-side and stable per user — an initial avatar with no
+    /// upload, no storage and nothing to moderate.
+    public let avatarColor: String?
+    public let plan: String
+    public let reelsThisMonth: Int
+    public let createdAt: Date
+
+    public var isPro: Bool { plan == "pro" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, plan
+        case displayName = "display_name"
+        case avatarColor = "avatar_color"
+        case reelsThisMonth = "reels_this_month"
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Maps
+
+public struct MapSummary: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let emoji: String?
+    /// The map every user gets automatically; it can't be deleted.
+    public let isPersonal: Bool
+    public let isOwner: Bool
+    public let memberCount: Int
+    public let placeCount: Int
+    /// Only ever returned to the owner.
+    public let inviteCode: String?
+    public let createdAt: Date
+
+    public var isShared: Bool { memberCount > 1 }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, emoji
+        case isPersonal = "is_personal"
+        case isOwner = "is_owner"
+        case memberCount = "member_count"
+        case placeCount = "place_count"
+        case inviteCode = "invite_code"
+        case createdAt = "created_at"
+    }
+}
+
+public struct MapInvite: Codable, Sendable {
+    public let mapID: String
+    public let inviteCode: String
+    /// Ready to hand straight to a share sheet.
+    public let inviteURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case mapID = "map_id"
+        case inviteCode = "invite_code"
+        case inviteURL = "invite_url"
+    }
+}
+
+/// What someone sees *before* signing in, so it carries nothing sensitive.
+public struct MapPreview: Codable, Sendable {
+    public let name: String
+    public let emoji: String?
+    public let ownerName: String?
+    public let memberCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name, emoji
+        case ownerName = "owner_name"
+        case memberCount = "member_count"
+    }
+}
+
+public struct MapMemberSummary: Codable, Identifiable, Hashable, Sendable {
+    public var id: String { userID }
+    public let userID: String
+    public let displayName: String?
+    public let avatarColor: String?
+    public let role: String
+    public let joinedAt: Date
+
+    public var isOwner: Bool { role == "owner" }
+
+    enum CodingKeys: String, CodingKey {
+        case role
+        case userID = "user_id"
+        case displayName = "display_name"
+        case avatarColor = "avatar_color"
+        case joinedAt = "joined_at"
+    }
+}
+
+/// Broadcast when a refresh fails and the session is genuinely gone, so the app
+/// can show the sign-in screen instead of silently rendering an empty map.
+public enum SessionExpiry {
+    public static let didExpire = Notification.Name("reelmap.sessionDidExpire")
+
+    @MainActor public static func notify() {
+        NotificationCenter.default.post(name: didExpire, object: nil)
     }
 }

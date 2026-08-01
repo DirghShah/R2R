@@ -6,7 +6,8 @@ import SwiftUI
 struct MapScreen: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var activity: ActivityStore
-    @Query(sort: \CachedPlace.savedAt, order: .reverse) private var allPlaces: [CachedPlace]
+    @EnvironmentObject private var maps: MapStore
+    @Query(sort: \CachedPlace.savedAt, order: .reverse) private var cachedPlaces: [CachedPlace]
 
     @StateObject private var location = LocationManager()
     @State private var filter: String = allFilter
@@ -16,6 +17,13 @@ struct MapScreen: View {
     @State private var camera: MapCameraPosition = .automatic
     @State private var didCenterOnUser = false
     @State private var region: MKCoordinateRegion?
+
+    /// Only the current map's pins. `/places` returns every map the user belongs
+    /// to in one response and the filtering happens here.
+    private var allPlaces: [CachedPlace] {
+        guard let mapID = maps.currentID else { return cachedPlaces }
+        return cachedPlaces.filter { $0.mapID == mapID }
+    }
 
     /// Saved places the geocoder couldn't resolve — they can't be drawn, so the
     /// map has to account for them somewhere or they just silently vanish.
@@ -94,6 +102,7 @@ struct MapScreen: View {
         .ignoresSafeArea(edges: .top)
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
+                MapHeaderBar().padding(.top, 4)
                 filterBar
                 if !unmapped.isEmpty { unmappedPill }
                 if let toast = activity.toast { ToastView(toast: toast).transition(.move(edge: .top).combined(with: .opacity)) }
@@ -117,7 +126,9 @@ struct MapScreen: View {
         .onChange(of: filter) { _, _ in fitToPins() }
         .refreshable { await Syncer.refresh(context, force: true) }
         .sheet(item: $detail) {
-            PlaceDetailScreen(place: $0, userLocation: location.current, detents: [.medium, .large])
+            PlaceDetailScreen(place: $0, userLocation: location.current,
+                              detents: [.medium, .large],
+                              showsAttribution: maps.current?.isShared ?? false)
         }
         .sheet(isPresented: $showActivity) { ActivityView() }
         .sheet(isPresented: $showUnmapped) {

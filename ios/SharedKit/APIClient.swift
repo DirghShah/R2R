@@ -53,13 +53,116 @@ public actor APIClient {
 
     // MARK: Auth
 
-    public func signInWithApple(identityToken: String) async throws -> String {
-        struct Body: Encodable { let identity_token: String }
-        struct Resp: Decodable { let access_token: String }
-        let resp: Resp = try await request("/auth/apple", method: "POST",
-                                           body: Body(identity_token: identityToken), authed: false)
-        AuthStore.token = resp.access_token
-        return resp.access_token
+    /// `displayName` and `authorizationCode` are only available on the *first*
+    /// authorization for an Apple ID — Apple never sends them again, and neither
+    /// appears in the identity token — so they're forwarded when present and the
+    /// server keeps them.
+    @discardableResult
+    public func signInWithApple(
+        identityToken: String, displayName: String? = nil, authorizationCode: String? = nil
+    ) async throws -> AuthSession {
+        struct Body: Encodable {
+            let identity_token: String
+            let display_name: String?
+            let authorization_code: String?
+        }
+        let session: AuthSession = try await request(
+            "/auth/apple", method: "POST",
+            body: Body(identity_token: identityToken,
+                       display_name: displayName,
+                       authorization_code: authorizationCode),
+            authed: false)
+        store(session)
+        return session
+    }
+
+    /// Non-interactive re-auth. The Share Extension can never show sign-in UI,
+    /// so this is the only way a share made after expiry can still go through.
+    @discardableResult
+    public func refreshSession() async throws -> AuthSession {
+        guard let refresh = AuthStore.refreshToken else {
+            throw APIError(status: 401, message: "Signed out. Please sign in again.")
+        }
+        struct Body: Encodable { let refresh_token: String }
+        let session: AuthSession = try await request(
+            "/auth/refresh", method: "POST", body: Body(refresh_token: refresh), authed: false)
+        store(session)
+        return session
+    }
+
+    private func store(_ session: AuthSession) {
+        AuthStore.token = session.accessToken
+        if let refresh = session.refreshToken { AuthStore.refreshToken = refresh }
+    }
+
+    public func signOut() async {
+        // Best-effort server-side revocation; the local session goes either way.
+        try? await requestVoid("/auth/signout", method: "POST")
+        AuthStore.signOut()
+    }
+
+    // MARK: Profile
+
+    public func me() async throws -> UserProfile {
+        let profile: UserProfile = try await request("/me")
+        AuthStore.userID = profile.id
+        return profile
+    }
+
+    @discardableResult
+    public func updateDisplayName(_ name: String) async throws -> UserProfile {
+        struct Body: Encodable { let display_name: String }
+        return try await request("/me", method: "PATCH", body: Body(display_name: name))
+    }
+
+    public func deleteAccount() async throws {
+        try await requestVoid("/me", method: "DELETE")
+        AuthStore.signOut()
+    }
+
+    // MARK: Maps
+
+    public func maps() async throws -> [MapSummary] {
+        try await request("/maps")
+    }
+
+    public func createMap(name: String, emoji: String?) async throws -> MapSummary {
+        struct Body: Encodable { let name: String; let emoji: String? }
+        return try await request("/maps", method: "POST", body: Body(name: name, emoji: emoji))
+    }
+
+    @discardableResult
+    public func renameMap(id: String, name: String) async throws -> MapSummary {
+        struct Body: Encodable { let name: String }
+        return try await request("/maps/\(id)", method: "PATCH", body: Body(name: name))
+    }
+
+    /// Owner deletes the map for everyone; a member just leaves it.
+    public func deleteOrLeaveMap(id: String) async throws {
+        try await requestVoid("/maps/\(id)", method: "DELETE")
+    }
+
+    public func createInvite(mapID: String, rotate: Bool = false) async throws -> MapInvite {
+        try await request("/maps/\(mapID)/invite?rotate=\(rotate)", method: "POST")
+    }
+
+    /// Unauthenticated on purpose: the join screen shows what you're joining
+    /// before asking anyone to sign in.
+    public func previewInvite(code: String) async throws -> MapPreview {
+        try await request("/maps/preview/\(code)", authed: false)
+    }
+
+    @discardableResult
+    public func joinMap(code: String) async throws -> MapSummary {
+        try await request("/maps/join/\(code)", method: "POST")
+    }
+
+    public func members(mapID: String) async throws -> [MapMemberSummary] {
+        try await request("/maps/\(mapID)/members")
+    }
+
+    public func removeMember(mapID: String, userID: String) async throws {
+        try await requestVoid("/maps/\(mapID)/members/\(userID)", method: "DELETE")
     }
 
     public func registerDevice(apnsToken: String) async throws {
@@ -69,10 +172,12 @@ public actor APIClient {
 
     // MARK: Reels
 
+    /// `mapID` is where the pins land; nil means the caller's personal map.
     @discardableResult
-    public func submitReel(url: String) async throws -> ReelStatus {
-        struct Body: Encodable { let url: String }
-        return try await request("/reels", method: "POST", body: Body(url: url))
+    public func submitReel(url: String, mapID: String? = nil) async throws -> ReelStatus {
+        struct Body: Encodable { let url: String; let map_id: String? }
+        return try await request("/reels", method: "POST",
+                                 body: Body(url: url, map_id: mapID))
     }
 
     public func reelStatus(_ reelID: String) async throws -> ReelStatus {
@@ -163,15 +268,16 @@ public actor APIClient {
         guard let http = resp as? HTTPURLResponse else {
             throw APIError(status: -1, message: "No response from ReelMap.")
         }
-        // Self-heal a stale/expired session (e.g. the DB was reset but the old
-        // token is still cached): clear it, re-acquire a session, retry once.
+        // An expired access token is recoverable without the user: swap the
+        // refresh token for a new one and retry once. This is what lets the
+        // Share Extension — which can never present sign-in UI — keep working.
         if http.statusCode == 401, authed, !isRetry {
-            AuthStore.token = nil
-            #if DEBUG
-            if (try? await signInWithApple(identityToken: "dev:me")) != nil {
+            if (try? await refreshSession()) != nil {
                 return try await perform(path, method: method, body: body, authed: authed, isRetry: true)
             }
-            #endif
+            // Refresh itself failed: the session is genuinely gone.
+            AuthStore.signOut()
+            await MainActor.run { SessionExpiry.notify() }
         }
         guard (200..<300).contains(http.statusCode) else {
             throw APIError(status: http.statusCode, message: Self.friendlyMessage(from: data))

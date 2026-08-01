@@ -10,6 +10,13 @@ import SwiftData
 @Model
 final class CachedPlace {
     @Attribute(.unique) var id: String
+    /// Which map this pin belongs to. `/places` returns every map the user is
+    /// in and the client filters locally, so this is the scoping key.
+    var mapID: String = ""
+    /// Who added it — shown in shared maps only.
+    var addedByID: String?
+    var addedByName: String?
+    var addedByColor: String?
     var name: String
     var category: String
     var cuisine: String?
@@ -40,7 +47,9 @@ final class CachedPlace {
     var savedAt: Date
 
     init(
-        id: String, name: String, category: String, cuisine: String? = nil,
+        id: String, mapID: String = "", addedByID: String? = nil,
+        addedByName: String? = nil, addedByColor: String? = nil,
+        name: String, category: String, cuisine: String? = nil,
         lat: Double?, lng: Double?, address: String?, region: String? = nil, rating: Double?,
         reviewCount: Int? = nil, priceLevel: Int? = nil, phone: String? = nil,
         businessStatus: String? = nil, googleMapsURL: String? = nil,
@@ -50,7 +59,10 @@ final class CachedPlace {
         instagramHandle: String?, website: String?, hoursHint: String?,
         priceLevelAI: Int?, city: String?, savedAt: Date
     ) {
-        self.id = id; self.name = name; self.category = category; self.cuisine = cuisine
+        self.id = id; self.mapID = mapID
+        self.addedByID = addedByID; self.addedByName = addedByName
+        self.addedByColor = addedByColor
+        self.name = name; self.category = category; self.cuisine = cuisine
         self.lat = lat; self.lng = lng; self.address = address; self.region = region
         self.rating = rating
         self.reviewCount = reviewCount; self.priceLevel = priceLevel; self.phone = phone
@@ -66,7 +78,9 @@ final class CachedPlace {
 
     convenience init(dto: SavedPlace) {
         self.init(
-            id: dto.id, name: dto.place.name, category: dto.place.category,
+            id: dto.id, mapID: dto.mapID, addedByID: dto.addedByID,
+            addedByName: dto.addedByName, addedByColor: dto.addedByColor,
+            name: dto.place.name, category: dto.place.category,
             cuisine: dto.place.cuisine,
             lat: dto.place.lat, lng: dto.place.lng, address: dto.place.address,
             region: dto.place.region,
@@ -88,6 +102,10 @@ final class CachedPlace {
     /// Refresh this row from the server without replacing the object, so views
     /// currently displaying it stay valid.
     func update(from dto: SavedPlace) {
+        mapID = dto.mapID
+        addedByID = dto.addedByID
+        addedByName = dto.addedByName
+        addedByColor = dto.addedByColor
         name = dto.place.name
         category = dto.place.category
         cuisine = dto.place.cuisine
@@ -170,6 +188,12 @@ final class CachedPlace {
 
     /// Someone dropped this pin by hand rather than the geocoder finding it.
     var isUserPlaced: Bool { locationSource == "user" }
+
+    /// True when someone else in a shared map added this.
+    var addedBySomeoneElse: Bool {
+        guard let addedByID, let me = AuthStore.userID else { return false }
+        return addedByID != me
+    }
 
     /// "$", "$$", "$$$", "$$$$" — nil if unknown. Prefer Google's verified price
     /// level; fall back to the AI's guess.
