@@ -17,6 +17,12 @@ final class MapStore: ObservableObject {
         }
     }
 
+    /// The single in-flight refresh. Launch drives this from two places that
+    /// race — `startSession()` and the `scenePhase == .active` handler — and
+    /// duplicate `/maps` calls were visible in the request log every cold start.
+    private var refreshTask: Task<Void, Never>?
+    private var generation = 0
+
     init() {
         currentID = CurrentMap.id
     }
@@ -29,7 +35,23 @@ final class MapStore: ObservableObject {
     /// deleted, so a share never has nowhere to go.
     var personal: MapSummary? { maps.first(where: \.isPersonal) }
 
-    func refresh() async {
+    /// `force` reloads even if a fetch is already running — needed after a local
+    /// mutation, because an in-flight response predates it and would overwrite
+    /// the optimistic row we just added.
+    func refresh(force: Bool = false) async {
+        if let inFlight = refreshTask {
+            await inFlight.value
+            if !force { return }
+        }
+        generation += 1
+        let mine = generation
+        let task = Task { await load() }
+        refreshTask = task
+        await task.value
+        if generation == mine { refreshTask = nil }
+    }
+
+    private func load() async {
         isLoading = true
         defer { isLoading = false }
         guard let fetched = try? await APIClient.shared.maps() else { return }
@@ -51,13 +73,13 @@ final class MapStore: ObservableObject {
         // "instant" and "laggy".
         maps.append(created)
         currentID = created.id
-        Task { await refresh() }
+        Task { await refresh(force: true) }
         return created
     }
 
     func rename(_ map: MapSummary, to name: String) async throws {
         try await APIClient.shared.renameMap(id: map.id, name: name)
-        await refresh()
+        await refresh(force: true)
     }
 
     /// Owner deletes for everyone; a member leaves. The UI must say which.
@@ -65,7 +87,7 @@ final class MapStore: ObservableObject {
         try await APIClient.shared.deleteOrLeaveMap(id: map.id)
         maps.removeAll { $0.id == map.id }
         if currentID == map.id { currentID = (personal ?? maps.first)?.id }
-        Task { await refresh() }
+        Task { await refresh(force: true) }
     }
 
     @discardableResult
@@ -73,7 +95,7 @@ final class MapStore: ObservableObject {
         let joined = try await APIClient.shared.joinMap(code: code)
         if !maps.contains(where: { $0.id == joined.id }) { maps.append(joined) }
         currentID = joined.id
-        Task { await refresh() }
+        Task { await refresh(force: true) }
         return joined
     }
 }

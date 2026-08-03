@@ -18,6 +18,9 @@ public actor APIClient {
     private let decoder: JSONDecoder
     private let session: URLSession
 
+    /// The single in-flight refresh. See `refreshSession()`.
+    private var refreshTask: Task<AuthSession, Error>?
+
     public init(baseURL: URL? = nil) {
         let fromBuild = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
         self.baseURL = baseURL ?? URL(string: fromBuild ?? "http://localhost:8000")!
@@ -78,8 +81,24 @@ public actor APIClient {
 
     /// Non-interactive re-auth. The Share Extension can never show sign-in UI,
     /// so this is the only way a share made after expiry can still go through.
+    ///
+    /// **Coalesced.** Refresh tokens rotate on use, so two concurrent refreshes
+    /// invalidate each other — and at launch the app fires `/maps`, `/reels` and
+    /// `/places` at once, which after the 24h access-token expiry meant three
+    /// simultaneous 401s each starting its own refresh. Two of the three lost the
+    /// race, and the user watched a spinner for fifteen seconds. Every caller
+    /// now awaits the same in-flight task.
     @discardableResult
     public func refreshSession() async throws -> AuthSession {
+        if let inFlight = refreshTask { return try await inFlight.value }
+
+        let task = Task<AuthSession, Error> { [self] in try await performRefresh() }
+        refreshTask = task
+        defer { refreshTask = nil }
+        return try await task.value
+    }
+
+    private func performRefresh() async throws -> AuthSession {
         guard let refresh = AuthStore.refreshToken else {
             throw APIError(status: 401, message: "Signed out. Please sign in again.")
         }
@@ -88,6 +107,34 @@ public actor APIClient {
             "/auth/refresh", method: "POST", body: Body(refresh_token: refresh), authed: false)
         store(session)
         return session
+    }
+
+    /// Refresh *before* spending a round trip on a request we know will 401.
+    /// The access token is a JWT we can read the expiry out of locally, so an
+    /// expired session costs one request instead of one-per-caller plus a retry.
+    private func refreshIfExpired() async {
+        guard let token = AuthStore.token else { return }
+        // A minute of slack: a token that expires mid-flight still 401s, and the
+        // retry path below handles it, but this avoids the common near-miss.
+        guard let expiry = Self.expiry(of: token),
+              expiry.timeIntervalSinceNow < 60 else { return }
+        _ = try? await refreshSession()
+    }
+
+    /// `exp` out of a JWT payload, without verifying the signature — the server
+    /// is the only thing that gets to trust this token; we just want to know
+    /// whether it's worth sending.
+    private static func expiry(of jwt: String) -> Date? {
+        let parts = jwt.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        var b64 = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        b64 += String(repeating: "=", count: (4 - b64.count % 4) % 4)
+        guard let data = Data(base64Encoded: b64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = json["exp"] as? Double else { return nil }
+        return Date(timeIntervalSince1970: exp)
     }
 
     private func store(_ session: AuthSession) {
@@ -246,14 +293,19 @@ public actor APIClient {
         guard let url = URL(string: baseURL.absoluteString.trimmingTrailingSlash + path) else {
             throw APIError(status: -1, message: "Bad request URL.")
         }
+        if authed, !isRetry { await refreshIfExpired() }
+
         var req = URLRequest(url: url)
         req.httpMethod = method
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONEncoder().encode(AnyEncodable(body))
         }
-        if authed, let token = AuthStore.token {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Remembered so a 401 can tell "my token is stale" from "the session is
+        // gone" — see below.
+        let sentToken: String? = authed ? AuthStore.token : nil
+        if let sentToken {
+            req.setValue("Bearer \(sentToken)", forHTTPHeaderField: "Authorization")
         }
         // Harmless normally; when API_BASE_URL is an ngrok tunnel it skips the
         // free-tier browser interstitial that would otherwise break API calls.
@@ -286,6 +338,13 @@ public actor APIClient {
         // refresh token for a new one and retry once. This is what lets the
         // Share Extension — which can never present sign-in UI — keep working.
         if http.statusCode == 401, authed, !isRetry {
+            // Someone else already refreshed while this request was in flight,
+            // so the token we sent is stale but the session is fine. Retrying
+            // without refreshing is the whole point: a second refresh here would
+            // rotate the token out from under every other in-flight request.
+            if AuthStore.token != sentToken {
+                return try await perform(path, method: method, body: body, authed: authed, isRetry: true)
+            }
             if (try? await refreshSession()) != nil {
                 return try await perform(path, method: method, body: body, authed: authed, isRetry: true)
             }
@@ -309,8 +368,11 @@ public actor APIClient {
         return "Something went wrong. Please try again."
     }
 
+    /// Deliberately excludes `.timedOut`. These are all *fast* failures worth a
+    /// second attempt; a timeout has already spent the full 15s budget, and
+    /// retrying it turned a slow request into a 30-second one.
     private static func isTransient(_ code: URLError.Code) -> Bool {
-        [.networkConnectionLost, .timedOut, .cannotConnectToHost].contains(code)
+        [.networkConnectionLost, .cannotConnectToHost].contains(code)
     }
 
     private static func networkMessage(_ code: URLError.Code) -> String {
