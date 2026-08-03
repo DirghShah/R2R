@@ -20,6 +20,9 @@ public actor APIClient {
 
     /// The single in-flight refresh. See `refreshSession()`.
     private var refreshTask: Task<AuthSession, Error>?
+    /// The one connection-establishing request. See `warmUp()`.
+    private var warmUpTask: Task<Void, Never>?
+    private var didWarmUp = false
 
     public init(baseURL: URL? = nil) {
         let fromBuild = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
@@ -54,22 +57,45 @@ public actor APIClient {
     }()
     private static let iso8601Plain = ISO8601DateFormatter()
 
-    /// Open the connection to the API before anything needs it.
+    /// Open one connection to the API before anything needs it, and make the
+    /// launch burst queue behind it.
     ///
     /// The first HTTPS request of a launch pays DNS, TCP, TLS and — because
-    /// URLSession probes HTTP/3 first — a QUIC attempt that may have to fall
-    /// back to TCP. That's seconds, and it was landing on whichever real request
-    /// happened to go first. Fire-and-forget against `/health`, which is cheap,
-    /// unauthenticated, and leaves a warm connection in the pool for the rest.
-    public func warmUp() async {
+    /// URLSession probes HTTP/3 — a QUIC attempt that may have to time out and
+    /// fall back to TCP. Measured against this backend, a Mac pays ~390ms for
+    /// that; the phone was paying seconds.
+    ///
+    /// Worse, the app opens with three concurrent requests, and URLSession will
+    /// happily open a connection *per* request when the pool is empty — so we
+    /// paid that cost three times over, in parallel (6.7s, 2.1s and 8.3s in the
+    /// logs). Once one connection exists, HTTP/2 multiplexes the rest onto it
+    /// for free, which is why every subsequent request was ~100ms.
+    ///
+    /// So this doesn't just pre-warm: `perform` waits on it. One handshake,
+    /// capped, instead of three racing ones.
+    public func warmUp() {
+        guard !didWarmUp, warmUpTask == nil else { return }
+        warmUpTask = Task { [self] in await openConnection() }
+    }
+
+    private func openConnection() async {
         guard let url = URL(string: baseURL.absoluteString.trimmingTrailingSlash + "/health") else { return }
         var req = URLRequest(url: url)
-        req.timeoutInterval = 10
+        // Caps how long the gate below can ever cost. Beyond this we're better
+        // off letting requests race than making the user wait on a probe.
+        req.timeoutInterval = 6
         let started = Date()
         _ = try? await session.data(for: req)
         #if DEBUG
         print("[api] warmUp → \(Int(Date().timeIntervalSince(started) * 1000))ms")
         #endif
+    }
+
+    private func awaitWarmUp() async {
+        guard let task = warmUpTask else { return }
+        await task.value
+        didWarmUp = true
+        warmUpTask = nil
     }
 
     // MARK: Auth
@@ -311,7 +337,11 @@ public actor APIClient {
         guard let url = URL(string: baseURL.absoluteString.trimmingTrailingSlash + path) else {
             throw APIError(status: -1, message: "Bad request URL.")
         }
-        if authed, !isRetry { await refreshIfExpired() }
+        if !isRetry {
+            // One handshake, not one per concurrent caller.
+            await awaitWarmUp()
+            if authed { await refreshIfExpired() }
+        }
 
         var req = URLRequest(url: url)
         req.httpMethod = method
