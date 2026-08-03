@@ -27,25 +27,10 @@ public actor APIClient {
 
         // Fail fast when the backend is unreachable (e.g. Mac asleep / IP changed)
         // so the Share Extension never spins forever — it queues and dismisses.
-        //
-        // `.ephemeral`, not `.default`, and not for privacy: the default
-        // configuration persists the Alt-Svc advertisement servers use to say
-        // "I also speak HTTP/3". Once cached, URLSession opens the *next*
-        // launch's first connection over QUIC/UDP — and if UDP:443 is filtered
-        // anywhere on the path, that attempt hangs until it times out before
-        // falling back to TCP. That is exactly what the logs show: /health
-        // timing out at 6.3s, then requests succeeding in 3-4s, then everything
-        // at ~100ms once a TCP connection exists. curl from a Mac never
-        // reproduces it because curl doesn't try HTTP/3.
-        //
-        // Nothing here needs a persistent URL cache or cookies — auth is a
-        // Bearer header — so ephemeral costs us nothing.
-        let cfg = URLSessionConfiguration.ephemeral
+        let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 15
         cfg.timeoutIntervalForResource = 20
         cfg.waitsForConnectivity = false
-        // Don't volunteer HTTP/3 either.
-        cfg.assumesHTTP3Capable = false
         self.session = URLSession(configuration: cfg)
         let d = JSONDecoder()
         // Backend timestamps come from Python `datetime.now(utc)` and include
@@ -348,13 +333,15 @@ public actor APIClient {
         let data: Data
         let resp: URLResponse
         do {
-            (data, resp) = try await session.data(for: req)
             #if DEBUG
+            (data, resp) = try await session.data(for: req, delegate: Self.metrics)
             // Timing on every call: "the app feels slow" is unfixable without
             // knowing whether it's the network, the server, or our own layout.
             let ms = Int(Date().timeIntervalSince(started) * 1000)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             print("[api] \(method) \(path) → \(code) in \(ms)ms")
+            #else
+            (data, resp) = try await session.data(for: req)
             #endif
         } catch let e as URLError {
             // "The network connection was lost" (-1005) & friends are frequently
@@ -426,6 +413,45 @@ private extension String {
         hasSuffix("/") ? String(dropLast()) : self
     }
 }
+
+#if DEBUG
+extension APIClient {
+    static let metrics = NetworkMetrics()
+}
+
+/// Per-phase timing straight from URLSession.
+///
+/// The wall-clock number in `[api]` says a request took four seconds but not
+/// *where* they went, and three rounds of reasoning from wall-clock alone
+/// produced two wrong diagnoses. This prints the breakdown URLSession already
+/// collects, so the next log answers it outright:
+///
+///   queued  time between the task starting and the connection being attempted
+///           (nonzero = URLSession is holding the request, not the network)
+///   dns/tcp/tls  the handshake, itemised
+///   ttfb    request sent → first response byte = the server's own time
+///   reused  whether it went over a pooled connection
+final class NetworkMetrics: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didFinishCollecting metrics: URLSessionTaskMetrics) {
+        guard let t = metrics.transactionMetrics.last else { return }
+        func ms(_ from: Date?, _ to: Date?) -> String {
+            guard let from, let to else { return "   -" }
+            return String(format: "%4.0f", to.timeIntervalSince(from) * 1000)
+        }
+        // Connection setup starts at DNS, or at connect when DNS was cached.
+        let setupStart = t.domainLookupStartDate ?? t.connectStartDate ?? t.requestStartDate
+        let path = task.originalRequest?.url?.path ?? "?"
+        print("[net] \(path) \(t.networkProtocolName ?? "?") reused=\(t.isReusedConnection)"
+            + " queued=\(ms(t.fetchStartDate, setupStart))"
+            + " dns=\(ms(t.domainLookupStartDate, t.domainLookupEndDate))"
+            + " tcp=\(ms(t.connectStartDate, t.connectEndDate))"
+            + " tls=\(ms(t.secureConnectionStartDate, t.secureConnectionEndDate))"
+            + " ttfb=\(ms(t.requestStartDate, t.responseStartDate))"
+            + " total=\(ms(t.fetchStartDate, t.responseEndDate))")
+    }
+}
+#endif
 
 private struct AnyEncodable: Encodable {
     private let encode: (Encoder) throws -> Void
