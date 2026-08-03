@@ -20,9 +20,6 @@ public actor APIClient {
 
     /// The single in-flight refresh. See `refreshSession()`.
     private var refreshTask: Task<AuthSession, Error>?
-    /// The one connection-establishing request. See `warmUp()`.
-    private var warmUpTask: Task<Void, Never>?
-    private var didWarmUp = false
 
     public init(baseURL: URL? = nil) {
         let fromBuild = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
@@ -30,10 +27,25 @@ public actor APIClient {
 
         // Fail fast when the backend is unreachable (e.g. Mac asleep / IP changed)
         // so the Share Extension never spins forever — it queues and dismisses.
-        let cfg = URLSessionConfiguration.default
+        //
+        // `.ephemeral`, not `.default`, and not for privacy: the default
+        // configuration persists the Alt-Svc advertisement servers use to say
+        // "I also speak HTTP/3". Once cached, URLSession opens the *next*
+        // launch's first connection over QUIC/UDP — and if UDP:443 is filtered
+        // anywhere on the path, that attempt hangs until it times out before
+        // falling back to TCP. That is exactly what the logs show: /health
+        // timing out at 6.3s, then requests succeeding in 3-4s, then everything
+        // at ~100ms once a TCP connection exists. curl from a Mac never
+        // reproduces it because curl doesn't try HTTP/3.
+        //
+        // Nothing here needs a persistent URL cache or cookies — auth is a
+        // Bearer header — so ephemeral costs us nothing.
+        let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 15
         cfg.timeoutIntervalForResource = 20
         cfg.waitsForConnectivity = false
+        // Don't volunteer HTTP/3 either.
+        cfg.assumesHTTP3Capable = false
         self.session = URLSession(configuration: cfg)
         let d = JSONDecoder()
         // Backend timestamps come from Python `datetime.now(utc)` and include
@@ -57,45 +69,23 @@ public actor APIClient {
     }()
     private static let iso8601Plain = ISO8601DateFormatter()
 
-    /// Open one connection to the API before anything needs it, and make the
-    /// launch burst queue behind it.
+    /// Start opening a connection to the API before anything needs it.
     ///
-    /// The first HTTPS request of a launch pays DNS, TCP, TLS and — because
-    /// URLSession probes HTTP/3 — a QUIC attempt that may have to time out and
-    /// fall back to TCP. Measured against this backend, a Mac pays ~390ms for
-    /// that; the phone was paying seconds.
-    ///
-    /// Worse, the app opens with three concurrent requests, and URLSession will
-    /// happily open a connection *per* request when the pool is empty — so we
-    /// paid that cost three times over, in parallel (6.7s, 2.1s and 8.3s in the
-    /// logs). Once one connection exists, HTTP/2 multiplexes the rest onto it
-    /// for free, which is why every subsequent request was ~100ms.
-    ///
-    /// So this doesn't just pre-warm: `perform` waits on it. One handshake,
-    /// capped, instead of three racing ones.
-    public func warmUp() {
-        guard !didWarmUp, warmUpTask == nil else { return }
-        warmUpTask = Task { [self] in await openConnection() }
-    }
-
-    private func openConnection() async {
+    /// Strictly fire-and-forget. An earlier version had `perform` *wait* on
+    /// this, on the theory that one handshake beats three concurrent ones. That
+    /// was wrong and measurably worse: the probe itself timed out at 6.3s and
+    /// every real request queued behind it, pushing first data from ~8s to
+    /// ~10s. When the first connection is the thing that's broken, making
+    /// everything depend on it is the opposite of a fix.
+    public func warmUp() async {
         guard let url = URL(string: baseURL.absoluteString.trimmingTrailingSlash + "/health") else { return }
         var req = URLRequest(url: url)
-        // Caps how long the gate below can ever cost. Beyond this we're better
-        // off letting requests race than making the user wait on a probe.
         req.timeoutInterval = 6
         let started = Date()
         _ = try? await session.data(for: req)
         #if DEBUG
         print("[api] warmUp → \(Int(Date().timeIntervalSince(started) * 1000))ms")
         #endif
-    }
-
-    private func awaitWarmUp() async {
-        guard let task = warmUpTask else { return }
-        await task.value
-        didWarmUp = true
-        warmUpTask = nil
     }
 
     // MARK: Auth
@@ -337,11 +327,7 @@ public actor APIClient {
         guard let url = URL(string: baseURL.absoluteString.trimmingTrailingSlash + path) else {
             throw APIError(status: -1, message: "Bad request URL.")
         }
-        if !isRetry {
-            // One handshake, not one per concurrent caller.
-            await awaitWarmUp()
-            if authed { await refreshIfExpired() }
-        }
+        if authed, !isRetry { await refreshIfExpired() }
 
         var req = URLRequest(url: url)
         req.httpMethod = method
