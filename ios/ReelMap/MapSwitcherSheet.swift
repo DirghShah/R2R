@@ -222,7 +222,7 @@ struct CreateMapSheet: View {
         defer { working = false }
         do {
             try await store.create(name: trimmed, emoji: emoji)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             dismiss()
         } catch {
             errorText = error.localizedDescription

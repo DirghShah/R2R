@@ -54,6 +54,24 @@ public actor APIClient {
     }()
     private static let iso8601Plain = ISO8601DateFormatter()
 
+    /// Open the connection to the API before anything needs it.
+    ///
+    /// The first HTTPS request of a launch pays DNS, TCP, TLS and — because
+    /// URLSession probes HTTP/3 first — a QUIC attempt that may have to fall
+    /// back to TCP. That's seconds, and it was landing on whichever real request
+    /// happened to go first. Fire-and-forget against `/health`, which is cheap,
+    /// unauthenticated, and leaves a warm connection in the pool for the rest.
+    public func warmUp() async {
+        guard let url = URL(string: baseURL.absoluteString.trimmingTrailingSlash + "/health") else { return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10
+        let started = Date()
+        _ = try? await session.data(for: req)
+        #if DEBUG
+        print("[api] warmUp → \(Int(Date().timeIntervalSince(started) * 1000))ms")
+        #endif
+    }
+
     // MARK: Auth
 
     /// `displayName` and `authorizationCode` are only available on the *first*

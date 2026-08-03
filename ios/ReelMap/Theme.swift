@@ -192,10 +192,44 @@ extension CachedPlace {
 }
 
 /// Light, non-intrusive haptics — makes taps feel physical.
+///
+/// The generators are held and `prepare()`d rather than constructed at the
+/// moment of the tap. Firing a cold generator makes the Taptic Engine power up
+/// synchronously, which is the "first press of any button lags, the second is
+/// instant" symptom — the engine idles down again, so it isn't a one-time
+/// launch cost, it recurs on every control you haven't touched recently.
+@MainActor
 enum Haptics {
-    static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
-    static func select() { UISelectionFeedbackGenerator().selectionChanged() }
-    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    private static let impact = UIImpactFeedbackGenerator(style: .light)
+    private static let selection = UISelectionFeedbackGenerator()
+    private static let notification = UINotificationFeedbackGenerator()
+
+    static func tap() {
+        impact.impactOccurred()
+        impact.prepare()
+    }
+
+    static func select() {
+        selection.selectionChanged()
+        selection.prepare()
+    }
+
+    static func success() {
+        notification.notificationOccurred(.success)
+        notification.prepare()
+    }
+
+    static func error() {
+        notification.notificationOccurred(.error)
+        notification.prepare()
+    }
+
+    /// Spin the Taptic Engine up before the user's first tap, not during it.
+    static func warm() {
+        impact.prepare()
+        selection.prepare()
+        notification.prepare()
+    }
 }
 
 enum DistanceFormat {

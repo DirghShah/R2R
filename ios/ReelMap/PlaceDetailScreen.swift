@@ -385,7 +385,7 @@ struct PlaceDetailScreen: View {
             deleteError = error.localizedDescription
             return
         }
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        Haptics.success()
         dismiss()
         // Let the sheet finish tearing down before the model goes away — this
         // view still holds `place`, and reading a deleted SwiftData object mid

@@ -251,7 +251,7 @@ struct AddReelScreen: View {
         do {
             let status = try await APIClient.shared.submitReel(url: link, mapID: maps.currentID)
             text = ""
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             // Ask now, not on a cold launch: the user just started something
             // that finishes later, so "tell me when it's done" explains itself.
             await PushManager.shared.requestOnFirstReel()

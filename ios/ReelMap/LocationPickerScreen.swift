@@ -179,7 +179,7 @@ struct LocationPickerScreen: View {
             let updated = try await APIClient.shared.setPlaceLocation(
                 id: place.id, lat: center.latitude, lng: center.longitude, address: address)
             apply(updated)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             dismiss()
         } catch {
             errorText = error.localizedDescription

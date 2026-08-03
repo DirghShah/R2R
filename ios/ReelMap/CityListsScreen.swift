@@ -128,7 +128,7 @@ struct CityListsScreen: View {
     private func delete(_ place: CachedPlace) async {
         do {
             try await Syncer.delete(placeID: place.id, context)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
         } catch {
             deleteError = error.localizedDescription
         }

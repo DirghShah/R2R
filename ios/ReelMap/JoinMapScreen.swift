@@ -112,7 +112,7 @@ struct JoinMapScreen: View {
         defer { joining = false }
         do {
             let map = try await APIClient.shared.joinMap(code: code)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             onJoined(map)
             dismiss()
         } catch {

@@ -201,7 +201,7 @@ struct MapDetailSheet: View {
         defer { loadingInvite = false }
         do {
             invite = try await APIClient.shared.createInvite(mapID: map.id, rotate: rotate)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
         } catch {
             errorText = error.localizedDescription
         }

@@ -12,10 +12,7 @@ struct ReelMapApp: App {
     @StateObject private var push = PushManager.shared
     @StateObject private var maps = MapStore()
 
-    private let container: ModelContainer = {
-        // Fail-fast on schema errors; models are simple value stores.
-        try! ModelContainer(for: CachedPlace.self, CachedList.self, PlaceMark.self)
-    }()
+    private let container: ModelContainer = LocalStore.makeContainer()
 
     var body: some Scene {
         WindowGroup {

@@ -100,10 +100,10 @@ final class ActivityStore: ObservableObject {
 
         let added = succeeded.reduce(0) { $0 + $1.placeCount }
         if added > 0 {
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             showToast(.added(added))
         } else if finished.contains(where: { $0.status == "failed" }) {
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            Haptics.error()
             showToast(.failed)
         } else if !succeeded.isEmpty {
             // Analyzed fine, just no venues in it. Saying "couldn't analyze"

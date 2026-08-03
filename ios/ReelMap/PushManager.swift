@@ -65,6 +65,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // Both of these are "pay the wake-up cost before the user asks for
+        // something" — the TLS handshake to the API and the Taptic Engine
+        // spin-up are each ~a second the first time, and neither has to happen
+        // on the critical path.
+        Task { await APIClient.shared.warmUp() }
+        Task { @MainActor in Haptics.warm() }
         return true
     }
 
