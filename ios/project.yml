@@ -52,8 +52,14 @@ targets:
         # Push ("your pins are ready"). Requires the paid Developer Program —
         # on a free personal team signing fails with "Push Notifications is not
         # available". Delete this line to build without it; the app still works,
-        # you just have to open it to see new pins. Switch to "production"
-        # (or use a TestFlight/App Store build) when you ship.
+        # you just have to open it to see new pins.
+        #
+        # Stays "development" here because that's what `Run`-to-device (what
+        # you use for day-to-day testing) needs. TestFlight/App Store archives
+        # require "production" instead — Apple rejects a "development"-entitled
+        # upload — so flip this one line to "production" and re-run
+        # `xcodegen generate` right before you Archive, then flip it back
+        # afterwards so local Run builds keep working. See ios/README.md.
         aps-environment: development
     info:
       path: ReelMap/Info.plist
