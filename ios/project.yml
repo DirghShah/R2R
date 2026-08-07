@@ -15,6 +15,14 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: "98B96Q5HQP"
+    # Only SharedKit (GENERATE_INFOPLIST_FILE: YES, no file on disk) needed
+    # this — ReelMap and ShareExtension have real Info.plist files with these
+    # keys already baked in — but Xcode only populates a *generated* plist's
+    # CFBundleShortVersionString/CFBundleVersion when these build settings are
+    # set, and they weren't, anywhere. That's what App Store Connect rejected
+    # the upload for (code 90057, SharedKit.framework specifically).
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
     # The deployed backend. Works from anywhere — cellular, other Wi-Fi, a
     # friend's phone — which LAN addresses never did.
     API_BASE_URL: "https://r2r-production-727a.up.railway.app"
@@ -34,6 +42,15 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap
+        # ReelMap/Assets.xcassets/AppIcon.appiconset — one 1024x1024 source,
+        # Xcode derives every device size (including the 120x120/152x152 App
+        # Store Connect rejected the upload over — codes 90022/90023/90713)
+        # from it at build time.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # iPhone only — there's no iPad layout anywhere in this app. Declaring
+        # it explicitly means Apple stops expecting iPad-sized assets/behavior
+        # we never built.
+        TARGETED_DEVICE_FAMILY: "1"
     entitlements:
       path: ReelMap/ReelMap.entitlements
       properties:
