@@ -15,6 +15,18 @@ struct MapDetailSheet: View {
     @State private var errorText: String?
     @State private var pendingRemoval: MapMemberSummary?
 
+    // Renaming is a content edit, not a structural one — like adding a place,
+    // any member can do it, not just the owner. Tracked locally so the sheet
+    // reflects the new name immediately rather than waiting on a full refresh.
+    @State private var displayedName: String
+    @State private var renaming = false
+    @State private var draftName = ""
+
+    init(map: MapSummary) {
+        self.map = map
+        _displayedName = State(initialValue: map.name)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -27,7 +39,7 @@ struct MapDetailSheet: View {
                 .padding(20)
             }
             .background(Color.canvas)
-            .navigationTitle(map.name)
+            .navigationTitle(displayedName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
@@ -38,6 +50,11 @@ struct MapDetailSheet: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(removalExplanation)
+            }
+            .alert("Rename map", isPresented: $renaming) {
+                TextField("Map name", text: $draftName)
+                Button("Save") { Task { await rename() } }
+                Button("Cancel", role: .cancel) {}
             }
             .alert("Something went wrong", isPresented: .init(get: { errorText != nil },
                                                              set: { if !$0 { errorText = nil } })) {
@@ -53,11 +70,25 @@ struct MapDetailSheet: View {
                 .frame(width: 60, height: 60)
                 .background(Color.cardStroke, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
-                Text(map.name).font(.display(20, .bold)).foregroundStyle(.ink)
+                Text(displayedName).font(.display(20, .bold)).foregroundStyle(.ink)
                 Text("\(map.placeCount) place\(map.placeCount == 1 ? "" : "s")")
                     .font(.system(size: 14)).foregroundStyle(.inkSecondary)
             }
             Spacer()
+            if !map.isPersonal {
+                Button {
+                    Haptics.tap()
+                    draftName = displayedName
+                    renaming = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.inkSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Color.cardStroke, in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -74,7 +105,7 @@ struct MapDetailSheet: View {
 
                 if let invite {
                     ShareLink(item: URL(string: invite.inviteURL) ?? URL(string: "https://reelmap.app")!,
-                              message: Text("Join my ReelMap: \(map.name)")) {
+                              message: Text("Join my ReelMap: \(displayedName)")) {
                         Label("Share invite link", systemImage: "square.and.arrow.up")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -179,7 +210,7 @@ struct MapDetailSheet: View {
     // are, so the copy has to be explicit about which one is about to happen.
     private var removalVerb: String { map.isOwner ? "Delete map" : "Leave map" }
     private var removalTitle: String {
-        map.isOwner ? "Delete \(map.name)?" : "Leave \(map.name)?"
+        map.isOwner ? "Delete \(displayedName)?" : "Leave \(displayedName)?"
     }
     private var removalExplanation: String {
         map.isOwner
@@ -222,6 +253,20 @@ struct MapDetailSheet: View {
             try await store.deleteOrLeave(map)
             dismiss()
         } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func rename() async {
+        let trimmed = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != displayedName else { return }
+        let previous = displayedName
+        displayedName = trimmed  // optimistic — matches the rest of MapStore's pattern
+        do {
+            try await store.rename(map, to: trimmed)
+            Haptics.success()
+        } catch {
+            displayedName = previous
             errorText = error.localizedDescription
         }
     }

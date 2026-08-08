@@ -140,6 +140,21 @@ def test_joining_twice_is_harmless(client):
     assert client.get(f"/maps/{trip['id']}/members").json().__len__() == 2
 
 
+def test_a_member_can_rename_a_shared_map_not_just_the_owner(client):
+    """The name is part of the map's content, like its places — not a
+    structural decision like who can invite or delete it."""
+    trip = client.post("/maps", json={"name": "Dallas Eats"}).json()
+    code = client.post(f"/maps/{trip['id']}/invite").json()["invite_code"]
+    friend = _user("dev:renamer")
+    friend.post(f"/maps/join/{code}")
+
+    renamed = friend.patch(f"/maps/{trip['id']}", json={"name": "Dallas Trip 2026"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Dallas Trip 2026"
+    # The owner sees the rename too — it's one shared row, not per-member state.
+    assert client.get("/maps").json()[1]["name"] == "Dallas Trip 2026"
+
+
 def test_only_the_owner_can_mint_an_invite(client):
     trip = client.post("/maps", json={"name": "Trip"}).json()
     code = client.post(f"/maps/{trip['id']}/invite").json()["invite_code"]

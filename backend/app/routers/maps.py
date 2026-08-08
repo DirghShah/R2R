@@ -84,7 +84,10 @@ def update_map(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MapOut:
-    m = require_owner(db, map_id, user.id)
+    # Any member can rename, not just the owner — a shared map's name is part
+    # of its content (like its places), not a structural decision like who can
+    # invite or delete it. Those stay owner-only below.
+    m = require_member(db, map_id, user.id)
     if body.name is not None:
         m.name = body.name.strip()
     if body.emoji is not None:
