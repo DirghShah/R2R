@@ -20,6 +20,29 @@ from worker.fetchers import get_fetcher
 
 log = logging.getLogger(__name__)
 
+
+class UnsupportedReel(Exception):
+    """The reel analysed fine — it just isn't something ReelMap can pin.
+
+    Distinct from a failure on purpose. A meal-kit ad isn't a bug in the
+    pipeline, and telling the user "couldn't analyze that reel" would send them
+    off retrying something that will never work. Its message is written to be
+    shown to the user verbatim.
+    """
+
+
+# Keyed by `reel_kind` from the extractor. Written as user-facing copy: these
+# strings land in the activity row and the push notification unchanged.
+_UNSUPPORTED_REASONS = {
+    "advertisement": "That looks like an ad, not a place you can visit. "
+                     "Try a reel about a specific restaurant or café.",
+    "recipe_or_cooking": "That's a recipe video — there's no venue to pin. "
+                         "Try a reel about a restaurant or café.",
+    "product_or_service": "That's a product or delivery service, not somewhere you can go. "
+                          "Try a reel about a specific restaurant or café.",
+    "not_places": "We couldn't find a restaurant or café in that reel.",
+}
+
 _CATEGORY_TITLES = {
     "cafe": "cafes", "restaurant": "restaurants", "hotel": "hotels",
     "bar": "bars", "club": "nightlife", "sight": "sightseeing",
@@ -95,6 +118,18 @@ def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
             reel.status = "done"
             reel.analyzed_at = datetime.now(timezone.utc)
             db.commit()
+        except UnsupportedReel as exc:
+            # Not a failure: the analysis worked and the answer was "there's
+            # nothing here to pin". Kept as its own status so the app can say
+            # why instead of showing a retryable error for something that will
+            # never succeed.
+            reel.status = "unsupported"
+            reel.error = str(exc)[:500]
+            reel.analyzed_at = datetime.now(timezone.utc)
+            db.commit()
+            print(f"[metrics] analyze SKIPPED reel={reel.canonical_id} reason={reel.error}", flush=True)
+            _notify(user_id, 0, reel)
+            return {"status": "unsupported", "reason": reel.error}
         except Exception as exc:  # noqa: BLE001 - record failure, don't crash worker
             reel.status = "failed"
             reel.error = str(exc)[:500]
@@ -150,6 +185,13 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int,
     )
     reel.summary = result.extraction.overall_summary
 
+    # Everything below the extraction call and above geocoding is free to reject
+    # on: Claude has already told us what this reel is, and Google Places (~90%
+    # of the marginal cost) hasn't been touched yet.
+    kind = (result.extraction.reel_kind or "venue_recommendation").strip().lower()
+    if kind != "venue_recommendation":
+        raise UnsupportedReel(_UNSUPPORTED_REASONS.get(kind, _UNSUPPORTED_REASONS["not_places"]))
+
     # Drop places the model saw on-screen but couldn't name ("<UNKNOWN>") — they
     # can't be pinned or looked up and only render as garbage in the app.
     all_places = result.extraction.places
@@ -157,6 +199,20 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int,
     if len(places) < len(all_places):
         log.info("reel %s: dropped %d un-nameable place(s)",
                  reel.canonical_id, len(all_places) - len(places))
+
+    # Category filter. Done per-place rather than per-reel on purpose: a "best of
+    # Dallas" reel with five cafes and one hotel should still save the cafes.
+    allowed = settings.allowed_categories
+    kept = [ep for ep in places if (ep.category or "").strip().lower() in allowed]
+    if len(kept) < len(places):
+        log.info("reel %s: dropped %d place(s) outside %s",
+                 reel.canonical_id, len(places) - len(kept), sorted(allowed))
+    places = kept
+
+    if not places:
+        raise UnsupportedReel(
+            "We couldn't find any restaurants or cafés in that reel."
+        )
 
     # A precise platform address describes the reel's single tagged venue — only
     # trust it to pin when the reel is about one place (not a "10 cafes" list).
@@ -379,6 +435,11 @@ def _notify(user_id: str, count: int, reel: ReelSource) -> None:
     if count > 0:
         title = "Pins ready"
         body = f"{count} place{'s' if count != 1 else ''} saved from your reel 📍"
+    elif reel.status == "unsupported":
+        # The reason is already user-facing copy — repeating a generic "couldn't
+        # analyze" here would just send them retrying something that can't work.
+        title = "Nothing to pin"
+        body = reel.error or "That reel doesn't have a place we can save."
     elif reel.status == "failed":
         title = "Couldn't analyze that reel"
         body = "Open ReelMap to try it again."

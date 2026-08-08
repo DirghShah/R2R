@@ -422,11 +422,19 @@ struct ToastView: View {
             case .failed:
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.closedRed)
                 Text("Couldn't analyze a reel").font(.system(size: 14, weight: .medium))
+            case .unsupported(let reason):
+                Image(systemName: "minus.circle").foregroundStyle(.inkMuted)
+                Text(reason).font(.system(size: 14, weight: .medium))
+                    .lineLimit(3).fixedSize(horizontal: false, vertical: true)
             }
         }
         .foregroundStyle(.ink)
         .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Color.cardFill, in: Capsule())
+        // A rounded rect rather than a Capsule: the skip reasons are full
+        // sentences, and a capsule around wrapped text bulges at the ends.
+        // At this radius it's indistinguishable for the one-line toasts.
+        .frame(maxWidth: 330)
+        .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: Color(hex: 0x1E2822).opacity(0.15), radius: 10, y: 4)
     }
 }

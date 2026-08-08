@@ -169,7 +169,7 @@ struct AddReelScreen: View {
 
     @ViewBuilder private var queueSection: some View {
         let queued = store.items.filter { $0.status == "pending" }
-        let done = store.items.filter { $0.status == "done" || $0.status == "failed" }
+        let done = store.items.filter { $0.status != "pending" && $0.status != "processing" }
         if !queued.isEmpty {
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
@@ -186,12 +186,24 @@ struct AddReelScreen: View {
             VStack(alignment: .leading, spacing: 9) {
                 Text("Recent").font(.display(15, .semibold)).foregroundStyle(.ink).padding(.top, queued.isEmpty ? 0 : 14)
                 ForEach(done.prefix(8)) { d in
-                    queueRow(pos: nil, item: d,
-                             chip: d.status == "failed" ? "Failed" : (d.placeCount > 0 ? "\(d.placeCount) place\(d.placeCount == 1 ? "" : "s")" : "No places"),
-                             chipColor: d.status == "failed" ? .closedRed : (d.placeCount > 0 ? .appAccent : .inkMuted))
+                    queueRow(pos: nil, item: d, chip: chipText(d), chipColor: chipColor(d))
                 }
             }
         }
+    }
+
+    /// "Not a place" is deliberately not styled as an error — the reel analysed
+    /// fine, it just wasn't a venue, and retrying will never change that.
+    private func chipText(_ d: ReelActivity) -> String {
+        if d.isUnsupported { return "Not a place" }
+        if d.status == "failed" { return "Failed" }
+        return d.placeCount > 0 ? "\(d.placeCount) place\(d.placeCount == 1 ? "" : "s")" : "No places"
+    }
+
+    private func chipColor(_ d: ReelActivity) -> Color {
+        if d.isUnsupported { return .inkMuted }
+        if d.status == "failed" { return .closedRed }
+        return d.placeCount > 0 ? .appAccent : .inkMuted
     }
 
     private func queueRow(pos: Int?, item: ReelActivity, chip: String, chipColor: Color) -> some View {
@@ -265,6 +277,12 @@ struct AddReelScreen: View {
     }
 
     private func duplicateNotice(for status: ReelStatus) -> String? {
+        // Re-sharing a reel we already judged un-pinnable is answered from the
+        // stored verdict — no second analysis, no second charge. Say why rather
+        // than "restoring its places", of which there are none.
+        if status.status == "unsupported" {
+            return status.error ?? "That reel doesn't have a place we can pin."
+        }
         guard status.isDuplicate else { return nil }
         if status.status == "done" && status.placeCount > 0 {
             let n = status.placeCount

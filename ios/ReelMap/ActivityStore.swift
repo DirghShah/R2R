@@ -17,7 +17,7 @@ final class ActivityStore: ObservableObject {
     @Published var toast: Toast?
     @Published private(set) var isRefreshing = false
 
-    enum Toast: Equatable { case added(Int), noPlaces, failed }
+    enum Toast: Equatable { case added(Int), noPlaces, failed, unsupported(String) }
 
     var activeCount: Int { items.filter(\.isActive).count }
     var hasItems: Bool { !items.isEmpty }
@@ -102,6 +102,10 @@ final class ActivityStore: ObservableObject {
         if added > 0 {
             Haptics.success()
             showToast(.added(added))
+        } else if let skipped = finished.first(where: \.isUnsupported) {
+            // Ads, recipes and delivery brands. The backend writes the sentence;
+            // showing it beats a generic failure the user would go on retrying.
+            showToast(.unsupported(skipped.error ?? "That reel has no place to pin."))
         } else if finished.contains(where: { $0.status == "failed" }) {
             Haptics.error()
             showToast(.failed)

@@ -48,6 +48,15 @@ private struct ActivityRow: View {
                     .font(.subheadline.weight(.medium))
                     .lineLimit(2)
                 statusChip
+                // The backend writes a user-facing sentence for these ("That
+                // looks like an ad, not a place you can visit"). A bare
+                // "Skipped" chip would leave people guessing why.
+                if item.isUnsupported, let reason = item.error {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer()
         }
@@ -89,6 +98,10 @@ private struct ActivityRow: View {
                  : "No places found",
                  icon: item.placeCount > 0 ? "checkmark.circle.fill" : "minus.circle",
                  tint: item.placeCount > 0 ? .green : .secondary)
+        case "unsupported":
+            // Deliberately not the orange warning: nothing went wrong, and
+            // this one will never succeed on a retry.
+            chip("Not a place", icon: "minus.circle", tint: .secondary)
         default:  // failed
             chip("Failed", icon: "exclamationmark.triangle.fill", tint: .orange)
         }

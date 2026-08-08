@@ -122,6 +122,9 @@ public struct ReelStatus: Codable, Sendable {
     public let reelID: String
     public let status: String
     public let placeCount: Int
+    /// Set when `status == "unsupported"` — a sentence written for the user
+    /// explaining why the reel had nothing to pin.
+    public let error: String?
     /// The backend already had this reel analyzed and reused the stored result
     /// instead of running (and charging for) a second analysis.
     public let alreadyAnalyzed: Bool?
@@ -129,7 +132,7 @@ public struct ReelStatus: Codable, Sendable {
     public var isDuplicate: Bool { alreadyAnalyzed == true }
 
     enum CodingKeys: String, CodingKey {
-        case status
+        case status, error
         case reelID = "reel_id"
         case placeCount = "place_count"
         case alreadyAnalyzed = "already_analyzed"
@@ -140,7 +143,7 @@ public struct ReelStatus: Codable, Sendable {
 public struct ReelActivity: Codable, Identifiable, Hashable, Sendable {
     public var id: String { reelID }
     public let reelID: String
-    public let status: String  // pending | processing | done | failed
+    public let status: String  // pending | processing | done | failed | unsupported
     public let platform: String
     public let title: String?
     public let thumbnailURL: String?
@@ -149,6 +152,10 @@ public struct ReelActivity: Codable, Identifiable, Hashable, Sendable {
     public let createdAt: Date
 
     public var isActive: Bool { status == "pending" || status == "processing" }
+
+    /// Analysed fine; there was just nothing pinnable in it — an ad, a recipe,
+    /// a delivery brand. `error` carries a sentence written for the user.
+    public var isUnsupported: Bool { status == "unsupported" }
 
     enum CodingKeys: String, CodingKey {
         case status, platform, title, error

@@ -63,6 +63,15 @@ def submit_reel(
             return ReelStatusResponse(reel_id=reel.id, status="done",
                                       place_count=saved, already_analyzed=True)
 
+        # Already judged un-pinnable. Re-analysing would cost another fetch and
+        # another Claude call to reach the identical verdict, so answer from the
+        # stored reason instead — re-sharing the same ad must be free.
+        if reel.status == "unsupported":
+            db.commit()
+            return ReelStatusResponse(reel_id=reel.id, status="unsupported",
+                                      place_count=0, error=reel.error,
+                                      already_analyzed=True)
+
         # Previously failed — retry it, but don't bill a failure to the quota.
         reel.status = "pending"
         reel.error = None

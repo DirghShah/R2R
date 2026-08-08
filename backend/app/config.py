@@ -50,6 +50,21 @@ class Settings(BaseSettings):
     apify_actor_youtube: str = "streamers/youtube-scraper"  # youtube shorts
     apify_cost_per_reel: float = 0.005  # rough estimate ($/reel) for the cost log
 
+    # --- What we're willing to pin ---
+    # Reels that aren't recommendations of visitable venues (meal-kit ads,
+    # recipe videos, product promos) are rejected outright before geocoding —
+    # they cost money and put junk pins on people's maps.
+    #
+    # Beyond that, only places in these categories are kept. The extractor can
+    # emit `hotel`, `sight`, `event` and `club` too; they're excluded by default
+    # because this is a food-and-drink app. Widen the list here (or set
+    # ALLOWED_PLACE_CATEGORIES) if that changes — nothing else needs touching.
+    allowed_place_categories: str = "cafe,restaurant,bar"
+
+    @property
+    def allowed_categories(self) -> set[str]:
+        return {c.strip().lower() for c in self.allowed_place_categories.split(",") if c.strip()}
+
     # --- Geocoding ---
     google_places_api_key: str | None = None
     geocoder: str = "nominatim"  # nominatim (free, default) | google (photos/ratings)

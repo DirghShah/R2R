@@ -14,7 +14,9 @@ class SubmitReelRequest(BaseModel):
 
 class ReelStatusResponse(BaseModel):
     reel_id: str
-    status: str  # pending | processing | done | failed
+    # 'unsupported' = analysed fine, but nothing pinnable in it (an ad, a
+    # recipe, a delivery brand). `error` then holds a sentence for the user.
+    status: str  # pending | processing | done | failed | unsupported
     place_count: int = 0
     error: str | None = None
     # True when the reel was already analyzed (by this or any user) and the
@@ -24,7 +26,7 @@ class ReelStatusResponse(BaseModel):
 
 class ReelActivityOut(BaseModel):
     reel_id: str
-    status: str  # pending | processing | done | failed
+    status: str  # pending | processing | done | failed | unsupported
     platform: str
     title: str | None = None
     thumbnail_url: str | None = None

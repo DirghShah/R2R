@@ -75,7 +75,28 @@ class ExtractedPlace(BaseModel):
     )
 
 
+REEL_KINDS = "venue_recommendation | advertisement | recipe_or_cooking | product_or_service | not_places"
+
+
 class ReelExtraction(BaseModel):
+    reel_kind: str = Field(
+        default="venue_recommendation",
+        description=(
+            "What this reel actually IS, judged before extracting anything: " + REEL_KINDS + ". "
+            "Use 'venue_recommendation' ONLY when the reel points viewers at specific, named, "
+            "physically-visitable places they could walk into. "
+            "'advertisement' = a sponsored/branded promo for a company rather than a genuine venue "
+            "recommendation (meal-kit and delivery subscriptions like CookUnity, HelloFresh, Factor; "
+            "app promos; discount-code reads). "
+            "'recipe_or_cooking' = making food at home, no venue to visit. "
+            "'product_or_service' = a brand, product, delivery-only/ghost kitchen or online service "
+            "with no address the viewer can go to. "
+            "'not_places' = anything else with no real-world venue (memes, fitness, fashion, travel "
+            "vlogs that name no venue). "
+            "When a reel is a genuine recommendation of real venues that ALSO carries a sponsorship, "
+            "it is still 'venue_recommendation'."
+        ),
+    )
     places: list[ExtractedPlace]
     overall_summary: str
     primary_city: str | None = Field(
@@ -106,6 +127,25 @@ You receive a mix of signals: the caption, audio transcript (often empty/music-o
 tagged @accounts, a tagged location, hashtags, and sampled video frames. The frames frequently \
 contain on-screen TEXT OVERLAYS — read every word carefully; they hold place names, menu items, \
 tips, and addresses.
+
+## First decide what the reel IS
+
+Before extracting anything, set `reel_kind`. ReelMap pins places on a map, so the only reels worth \
+extracting are ones recommending **specific, named, physically-visitable venues**.
+
+Set `reel_kind` to something other than `venue_recommendation` — and return an EMPTY `places` list — when:
+- It's an **ad** for a company rather than a venue recommendation: meal-kit or delivery subscriptions \
+(CookUnity, HelloFresh, Factor, Blue Apron), app promos, discount-code reads, brand sponsorships \
+where the brand itself is the subject.
+- It's a **recipe / cooking** video — food made at home, nowhere to visit.
+- It's a **product or online service**, including delivery-only brands and ghost kitchens with no \
+address a viewer could walk into.
+- It features **no named real-world venue at all**.
+
+The test is simple: *could a viewer physically go there?* A meal-kit brand ships you a box — that is \
+not a place, and must never be pinned. A restaurant that happens to be sponsoring the reel still is.
+
+A genuine venue recommendation that also carries a sponsorship stays `venue_recommendation`.
 
 ## Completeness is the #1 priority
 
