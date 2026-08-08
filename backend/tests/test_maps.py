@@ -155,6 +155,19 @@ def test_a_member_can_rename_a_shared_map_not_just_the_owner(client):
     assert client.get("/maps").json()[1]["name"] == "Dallas Trip 2026"
 
 
+def test_the_personal_map_can_be_renamed_even_though_it_cannot_be_deleted(client):
+    """"My Map" is a default name, not a fixed identity — and it's often the
+    first map people share, so it's the one they most want to rename."""
+    personal = client.get("/maps").json()[0]
+    assert personal["is_personal"] is True
+
+    renamed = client.patch(f"/maps/{personal['id']}", json={"name": "Dallas"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Dallas"
+    # Still undeletable — renaming and deleting are different permissions.
+    assert client.delete(f"/maps/{personal['id']}").status_code == 400
+
+
 def test_only_the_owner_can_mint_an_invite(client):
     trip = client.post("/maps", json={"name": "Trip"}).json()
     code = client.post(f"/maps/{trip['id']}/invite").json()["invite_code"]

@@ -75,20 +75,21 @@ struct MapDetailSheet: View {
                     .font(.system(size: 14)).foregroundStyle(.inkSecondary)
             }
             Spacer()
-            if !map.isPersonal {
-                Button {
-                    Haptics.tap()
-                    draftName = displayedName
-                    renaming = true
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.inkSecondary)
-                        .frame(width: 32, height: 32)
-                        .background(Color.cardStroke, in: Circle())
-                }
-                .buttonStyle(.plain)
+            // Every map, personal included. The personal map is the one you
+            // can't *delete* — "My Map" is a default, not a fixed identity,
+            // and it's frequently the one people share first.
+            Button {
+                Haptics.tap()
+                draftName = displayedName
+                renaming = true
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.inkSecondary)
+                    .frame(width: 32, height: 32)
+                    .background(Color.cardStroke, in: Circle())
             }
+            .buttonStyle(.plain)
         }
     }
 
