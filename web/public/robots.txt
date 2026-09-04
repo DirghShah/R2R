@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://nosh.vercel.app/sitemap-index.xml
+Sitemap: https://nosh-zeta.vercel.app/sitemap-index.xml
