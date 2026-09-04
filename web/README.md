@@ -25,7 +25,14 @@ up automatically.
 | `/.well-known/apple-app-site-association` | iOS decides whether links open the app; must come from **this** origin with **no redirect** |
 
 These are *rewrites*, not redirects — a redirect silently breaks Universal
-Links, with no error anywhere to explain why. Check after deploying:
+Links, with no error anywhere to explain why.
+
+`vercel.json` cannot explain this itself: JSON has no comments, and Vercel
+rejects any unrecognised property inside a rewrite object rather than ignoring
+it (`rewrites[0] should NOT have additional property 'comment'`). So the
+reasoning lives here. Don't add comment keys back to that file.
+
+Check after deploying:
 
 ```bash
 curl -sI https://<site>/.well-known/apple-app-site-association

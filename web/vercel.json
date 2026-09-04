@@ -2,12 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
-      "comment": "Invite landing pages render map name/owner/member count from Postgres, so they cannot be static. Proxied, not redirected — a redirect would break Universal Links.",
       "source": "/join/:code",
       "destination": "https://r2r-production-727a.up.railway.app/join/:code"
     },
     {
-      "comment": "iOS fetches this to decide whether a link opens the app. It must come from THIS origin with no redirect, which is why the site and the API share a host.",
       "source": "/.well-known/apple-app-site-association",
       "destination": "https://r2r-production-727a.up.railway.app/.well-known/apple-app-site-association"
     }
