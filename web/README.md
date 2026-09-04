@@ -1,0 +1,91 @@
+# Nosh — marketing site
+
+Astro, deployed to Vercel from this subdirectory. Zero JS shipped except ~50
+lines of hand-written scroll code; no CSS framework.
+
+```bash
+npm install
+npm run dev      # http://localhost:4321
+npm run build
+```
+
+## Deploying
+
+New Vercel project → import this repo → **Root Directory: `web`**. Framework
+preset auto-detects as Astro. Nothing else to configure; `vercel.json` is picked
+up automatically.
+
+## The one thing that must be verified after every deploy
+
+`vercel.json` proxies two paths to the Railway backend:
+
+| Path | Why it can't be static |
+|---|---|
+| `/join/:code` | Renders map name, owner and member count from Postgres |
+| `/.well-known/apple-app-site-association` | iOS decides whether links open the app; must come from **this** origin with **no redirect** |
+
+These are *rewrites*, not redirects — a redirect silently breaks Universal
+Links, with no error anywhere to explain why. Check after deploying:
+
+```bash
+curl -sI https://<site>/.well-known/apple-app-site-association
+# expect: 200, content-type: application/json, and no 3xx
+curl -s  https://<site>/.well-known/apple-app-site-association
+# expect: the real TEAMID.com.yourco.reelmap — not the 503 error body
+```
+
+Then on a device: create an invite in the app, send yourself the link, tap it.
+It must open the app, not Safari. **Delete and reinstall first** — iOS caches
+that file per install and won't re-fetch it.
+
+## Switching to a real domain
+
+Four places, all of which must agree:
+
+1. `astro.config.mjs` → `site`
+2. `public/robots.txt` → the `Sitemap:` line
+3. Railway, both services → `PUBLIC_BASE_URL` (this builds the invite URL)
+4. `ios/project.yml` → `APP_LINK_DOMAIN`, then rebuild the app
+
+After step 4, everyone must delete and reinstall to pick up the new
+`apple-app-site-association`.
+
+## Screenshots
+
+Placeholders render at true iPhone aspect ratio, so dropping images in shifts
+nothing. Put files in `public/shots/` and pass `src` to `<Shot />`.
+
+**These are the same assets App Store submission needs — shoot once, use twice.**
+Capture at 1290 × 2796 (iPhone 15/16 Pro Max).
+
+| # | Where | What to capture |
+|---|---|---|
+| 1 | Hero | Map screen, pins visible, filter chips along the top. Your best-looking screen — this is the first thing anyone sees |
+| 2 | How it works, step 1 | Instagram's share sheet with Nosh visible in the app row |
+| 3 | How it works, step 2 | The analyzing state — progress card with the reel thumbnail |
+| 4 | How it works, step 3 | Map with ~10 pins and the filter chips |
+| 5 | Features | A city list showing many places extracted from one reel |
+| 6 | Features | Place detail — tips, what to order, hours |
+| 7 | Features | The map with a cuisine filter applied |
+| 8 | Shared maps | A shared map showing member avatars, or the invite sheet |
+
+Also still placeholder: `public/favicon.svg`, and the wordmark in
+`src/components/Wordmark.astro` (currently live text in Instrument Serif — swap
+for an SVG when the logo is drawn).
+
+## Copy that is load-bearing
+
+Two paragraphs are not decorative and should not be edited casually:
+
+- **`src/pages/terms.astro`, section 4** — the neutral-tool clause ("Nosh acts
+  solely as a tool to organise and bookmark content available publicly or via
+  your personal accounts"). This is the app's position on third-party content.
+- **`src/pages/terms.astro`, section 12** — the Apple Inc. notice. Apple
+  requires these clauses when not using their standard EULA.
+
+### TODO before submitting to the App Store
+
+Terms §3 and the support page currently route content reports to email, because
+there is no in-app Report feature yet. Apple Guideline 1.2 expects in-app
+reporting and blocking for apps with user-generated content. When that ships,
+tighten both to describe it.

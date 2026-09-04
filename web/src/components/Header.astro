@@ -1,0 +1,62 @@
+---
+import Wordmark from './Wordmark.astro';
+const path = Astro.url.pathname;
+const links = [
+  { href: '/blog', label: 'Blog' },
+  { href: '/support', label: 'Support' },
+];
+---
+<header class="site-header">
+  <div class="wrap bar">
+    <a href="/" class="home" aria-label="Nosh — home"><Wordmark size="1.45rem" /></a>
+    <nav aria-label="Primary">
+      {links.map((l) => (
+        <a href={l.href} class="link nav" aria-current={path.startsWith(l.href) ? 'page' : undefined}>
+          {l.label}
+        </a>
+      ))}
+      <a href="/#get" class="btn btn--sm">Get the app</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--canvas) 82%, transparent);
+    backdrop-filter: saturate(150%) blur(14px);
+    border-bottom: 1px solid transparent;
+    transition: border-color .3s var(--ease);
+  }
+  /* The rule appears only once you've scrolled, so the hero starts clean. */
+  .site-header[data-scrolled] { border-bottom-color: var(--rule); }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 1.05rem;
+  }
+  .home { text-decoration: none; }
+  nav { display: flex; align-items: center; gap: clamp(1rem, 3vw, 1.9rem); }
+  .nav { font-size: var(--t-small); color: var(--ink-2); }
+  .nav:hover { color: var(--ink); }
+  .btn--sm { padding: 0.6rem 1.1rem; font-size: 0.875rem; }
+
+  @media (max-width: 34rem) {
+    .nav { display: none; }
+  }
+</style>
+
+<script>
+  // Header gains a hairline only after you leave the top of the page.
+  const header = document.querySelector('.site-header');
+  if (header) {
+    const sync = () => header.toggleAttribute('data-scrolled', window.scrollY > 8);
+    addEventListener('scroll', sync, { passive: true });
+    sync();
+  }
+</script>

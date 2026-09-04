@@ -1,0 +1,61 @@
+---
+/**
+ * Screenshot placeholder.
+ *
+ * Renders at the real aspect ratio of an iPhone screenshot so the layout around
+ * it is final — dropping the image in later shifts nothing. The label states
+ * exactly what to capture, and these are the same assets App Store submission
+ * needs, so they get shot once and used twice.
+ *
+ * To fill one in: put the file in web/public/shots/ and pass `src`.
+ */
+interface Props {
+  n: number;
+  what: string;
+  src?: string;
+  /** 'phone' = 1290×2796 device shot. 'wide' = a cropped detail. */
+  shape?: 'phone' | 'wide';
+  size?: string;
+}
+const { n, what, src, shape = 'phone', size = '300px' } = Astro.props;
+---
+<figure class={`shot shot--${shape}`} style={`--w:${size}`}>
+  {src ? (
+    <img src={src} alt={what} loading="lazy" decoding="async" width="1290" height="2796" />
+  ) : (
+    <div class="ph">
+      <span class="n">Screenshot {n}</span>
+      <span class="what">{what}</span>
+      <span class="spec">{shape === 'phone' ? '1290 × 2796' : 'crop, 3:2'}</span>
+    </div>
+  )}
+</figure>
+
+<style>
+  .shot { margin: 0; width: var(--w); max-width: 100%; }
+  .shot--phone .ph, .shot--phone img { aspect-ratio: 1290 / 2796; border-radius: 30px; }
+  .shot--wide  .ph, .shot--wide  img { aspect-ratio: 3 / 2;       border-radius: 14px; }
+
+  img {
+    width: 100%;
+    object-fit: cover;
+    border: 1px solid var(--rule);
+  }
+
+  .ph {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    text-align: center;
+    padding: 1.5rem;
+    border: 1px dashed color-mix(in srgb, var(--ink-3) 55%, transparent);
+    background: color-mix(in srgb, var(--accent) 4%, var(--canvas-raised));
+    color: var(--ink-3);
+  }
+  .n { font-size: var(--t-label); font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+  .what { font-size: var(--t-small); color: var(--ink-2); line-height: 1.4; max-width: 24ch; }
+  .spec { font-size: .75rem; font-variant-numeric: tabular-nums; opacity: .75; }
+</style>

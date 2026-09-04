@@ -1,0 +1,146 @@
+---
+import Prose from '../layouts/Prose.astro';
+---
+<Prose
+  title="Privacy Policy"
+  description="What Nosh collects, what it does not, and who processes it."
+  updated="September 2026"
+>
+  <p>
+    This policy describes what Nosh collects and why. It is written to match what
+    the app actually does rather than to cover every hypothetical, and it is kept
+    current with the code.
+  </p>
+  <p class="key">
+    The short version: Nosh stores your account, the links you share, and the
+    places extracted from them. It never stores the videos themselves, and your
+    personal notes never leave your phone.
+  </p>
+
+  <h2>Who we are</h2>
+  <p>
+    Nosh is operated by Dirgh Shah, an individual developer, and is the data
+    controller for the information described here. Contact:
+    <a href="mailto:dirghvshah@gmail.com">dirghvshah@gmail.com</a>.
+  </p>
+
+  <h2>What we collect</h2>
+
+  <h3>Account</h3>
+  <p>
+    Nosh uses Sign in with Apple. We receive and store a stable identifier from
+    Apple, plus the display name you choose and a generated avatar colour. If you
+    use Apple’s “Hide My Email”, we never see your real address. We do not
+    collect your password — Apple handles authentication.
+  </p>
+
+  <h3>Links you share, and what we take from them</h3>
+  <p>
+    When you share a reel, we store the link and the information needed to
+    analyse it: the caption, the creator’s handle, a thumbnail URL, a transcript
+    of any speech, and the summary and place details our analysis produces
+    (names, addresses, tips, dishes mentioned, opening-hours hints).
+  </p>
+  <p class="key">
+    We do not store the video. Frames and audio are fetched, read once and
+    discarded — they are never written to disk or retained after analysis.
+  </p>
+  <p>
+    Because analysis of a given reel is cached and shared, a reel someone else
+    has already analysed is not analysed again. The stored analysis is not linked
+    to who shared it beyond your own saved places.
+  </p>
+
+  <h3>Location</h3>
+  <p>
+    If you grant location access, it is used on your device only — to centre the
+    map on you and to show how far away a place is. Your location is never sent
+    to our servers. You can decline it and the rest of the app works normally.
+  </p>
+
+  <h3>Notes and visited marks</h3>
+  <p>
+    Notes you write on a place and whether you have visited it are stored on your
+    device and are never uploaded. This holds even inside a shared map: everyone
+    sees the same places, but only you see what you wrote about them.
+  </p>
+
+  <h3>Notifications</h3>
+  <p>
+    If you enable notifications, we store an Apple push token so we can tell you
+    when your pins are ready. Turning notifications off in iOS Settings stops
+    this.
+  </p>
+
+  <h3>Usage</h3>
+  <p>
+    We store a monthly count of reels you have analysed, to enforce the free
+    tier. We do not use third-party analytics or advertising SDKs, and we do not
+    track you across other apps or websites.
+  </p>
+
+  <h2>Who else processes your data</h2>
+  <p>To make the app work, limited data is shared with:</p>
+  <ul>
+    <li><strong>Anthropic</strong> — the caption, transcript and sampled video frames are sent to Claude to extract place names. Not used to train models.</li>
+    <li><strong>Apify</strong> — used to fetch the public content of the link you shared.</li>
+    <li><strong>Google Places</strong> — place names and cities are sent to find the matching venue, its address, hours and photos.</li>
+    <li><strong>Apple (APNs)</strong> — delivers notifications.</li>
+    <li><strong>Railway</strong> — hosts our servers and database (United States).</li>
+  </ul>
+  <p>
+    We do not sell your data, and we do not share it with advertisers.
+  </p>
+
+  <h2>How long we keep it</h2>
+  <p>
+    Account data and saved places are kept until you delete your account.
+    Analysed reel data is cached so the same reel does not need re-analysing.
+    Transient media — video frames and audio — is discarded immediately after
+    analysis.
+  </p>
+
+  <h2>Deleting your account</h2>
+  <p>
+    Go to <strong>Profile → Delete account</strong> in the app. This permanently
+    deletes your account, your maps and every place you have saved, and revokes
+    the Sign in with Apple token. It cannot be undone. Places you added to other
+    people’s shared maps remain with those maps.
+  </p>
+  <p>
+    You can also email us and we will do it for you.
+  </p>
+
+  <h2>Your rights</h2>
+  <p>
+    Depending on where you live, you may have the right to access, correct,
+    export or delete your personal data, and to object to processing. Email
+    <a href="mailto:dirghvshah@gmail.com">dirghvshah@gmail.com</a> and we will
+    respond within 30 days.
+  </p>
+
+  <h2>Children</h2>
+  <p>
+    Nosh is not intended for anyone under 16. We do not knowingly collect data
+    from children. If you believe a child has created an account, contact us and
+    we will remove it.
+  </p>
+
+  <h2>Security</h2>
+  <p>
+    Traffic is encrypted in transit. Session tokens are stored in the iOS
+    Keychain, and refresh tokens are stored on our servers only as hashes. No
+    system is perfectly secure, and we cannot guarantee absolute security.
+  </p>
+
+  <h2>Changes</h2>
+  <p>
+    If this policy changes materially we will update the date at the top and, for
+    significant changes, notify you in the app.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    <a href="mailto:dirghvshah@gmail.com">dirghvshah@gmail.com</a>
+  </p>
+</Prose>

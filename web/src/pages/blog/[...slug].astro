@@ -1,0 +1,53 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const fmt = (d: Date) =>
+  d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+---
+<Base title={`${post.data.title} — Nosh`} description={post.data.description}>
+  <article class="section">
+    <div class="wrap wrap--narrow prose">
+      <header>
+        <p class="label"><a href="/blog" class="link">Blog</a></p>
+        <h1>{post.data.title}</h1>
+        <p class="updated">
+          {fmt(post.data.published)}
+          {post.data.updated && ` · updated ${fmt(post.data.updated)}`}
+        </p>
+      </header>
+      <Content />
+    </div>
+  </article>
+
+  <aside class="wrap wrap--narrow">
+    <div class="endcap">
+      <h3>Nosh turns saved reels into a map</h3>
+      <p>Share a reel, get pins with addresses, hours and what to order.</p>
+      <a href="/" class="btn">See how it works</a>
+    </div>
+  </aside>
+</Base>
+
+<style>
+  .prose h1 { font-size: clamp(2rem, 5.5vw, 3.25rem); }
+  .endcap {
+    border: 1px solid var(--rule);
+    border-radius: 18px;
+    padding: clamp(1.75rem, 4vw, 2.5rem);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: .7rem;
+    background: var(--canvas-raised);
+  }
+  .endcap h3 { margin: 0; }
+  .endcap p { color: var(--ink-2); margin: 0 0 .6rem; }
+</style>

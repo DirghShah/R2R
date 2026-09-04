@@ -1,0 +1,66 @@
+---
+import Wordmark from './Wordmark.astro';
+const year = new Date().getFullYear();
+---
+<footer class="site-footer">
+  <hr class="rule" />
+  <div class="wrap inner">
+    <div class="brand">
+      <Wordmark size="1.5rem" />
+      <p class="tag">Every food reel you saved, on one map.</p>
+    </div>
+
+    <nav class="cols" aria-label="Footer">
+      <div>
+        <p class="label">Product</p>
+        <a href="/#how" class="link">How it works</a>
+        <a href="/#shared" class="link">Shared maps</a>
+        <a href="/blog" class="link">Blog</a>
+      </div>
+      <div>
+        <p class="label">Legal</p>
+        <a href="/privacy" class="link">Privacy</a>
+        <a href="/terms" class="link">Terms</a>
+        <a href="/support" class="link">Support</a>
+      </div>
+    </nav>
+  </div>
+
+  <div class="wrap fine">
+    <p>© {year} Dirgh Shah</p>
+    <p class="disclaimer">
+      Nosh is not affiliated with, endorsed by, or sponsored by Meta, ByteDance
+      or Google. Instagram, TikTok and YouTube are trademarks of their
+      respective owners.
+    </p>
+  </div>
+</footer>
+
+<style>
+  .site-footer { margin-top: var(--section-y); }
+  .inner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(2.5rem, 8vw, 6rem);
+    justify-content: space-between;
+    padding-block: clamp(3rem, 7vw, 4.5rem) 2.5rem;
+  }
+  .tag { color: var(--ink-2); font-size: var(--t-small); margin: .85rem 0 0; max-width: 26ch; }
+  .cols { display: flex; gap: clamp(2.5rem, 7vw, 5rem); }
+  .cols div { display: flex; flex-direction: column; align-items: flex-start; gap: .55rem; }
+  .cols .label { margin-bottom: .35rem; }
+  .cols a { font-size: var(--t-small); color: var(--ink-2); }
+  .cols a:hover { color: var(--ink); }
+
+  .fine {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2.5rem;
+    justify-content: space-between;
+    padding-bottom: 3rem;
+    font-size: 0.8125rem;
+    color: var(--ink-3);
+  }
+  .fine p { margin: 0; }
+  .disclaimer { max-width: 58ch; }
+</style>

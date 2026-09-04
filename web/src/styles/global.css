@@ -1,0 +1,201 @@
+/* ---------------------------------------------------------------------------
+   Nosh — design tokens and base styles.
+
+   Two deliberate choices worth stating, because they carry the whole look:
+
+   1. Display type is Instrument Serif, body type is the system stack. On the
+      iPhones this site is selling to, the system stack resolves to SF Pro —
+      the exact face the app itself uses. The site and the product therefore
+      render in the same typeface with no webfont download.
+
+   2. Colours are lifted from ios/ReelMap/Theme.swift so the two read as one
+      product. Accent green is used sparingly on purpose; it is a highlight,
+      not a background.
+--------------------------------------------------------------------------- */
+
+:root {
+  /* Palette — mirrors Theme.swift:25-36 */
+  --canvas:        #F6F6F3;
+  --canvas-raised: #FFFFFF;
+  --ink:           #16201C;
+  --ink-2:         #5C6560;
+  --ink-3:         #8B938E;
+  --accent:        #159A6A;
+  --accent-deep:   #0F2A20;
+  --rule:          #E4E4DD;
+
+  --measure: 68ch;
+  --gutter: clamp(1.25rem, 5vw, 2.5rem);
+  --section-y: clamp(5rem, 13vw, 10rem);
+
+  /* Type scale — fluid, so nothing needs breakpoint babysitting */
+  --t-display: clamp(2.75rem, 8.5vw, 6.25rem);
+  --t-h2:      clamp(2rem, 5vw, 3.5rem);
+  --t-h3:      clamp(1.375rem, 2.4vw, 1.75rem);
+  --t-lead:    clamp(1.0625rem, 1.7vw, 1.3125rem);
+  --t-body:    1.0625rem;
+  --t-small:   0.9375rem;
+  --t-label:   0.75rem;
+
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+               system-ui, sans-serif;
+
+  --ease: cubic-bezier(.16, 1, .3, 1);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas:        #101311;
+    --canvas-raised: #191D1A;
+    --ink:           #F1F4F1;
+    --ink-2:         #A2ABA5;
+    --ink-3:         #737B76;
+    --accent:        #35B487;
+    --accent-deep:   #CFE6DA;
+    --rule:          #262B27;
+    color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 400;      /* Instrument Serif ships one weight; faux-bold ruins it */
+  letter-spacing: -0.021em;
+  line-height: 1.04;
+  margin: 0;
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--t-display); }
+h2 { font-size: var(--t-h2); }
+h3 { font-size: var(--t-h3); line-height: 1.18; }
+
+p { margin: 0 0 1.1em; max-width: var(--measure); text-wrap: pretty; }
+p:last-child { margin-bottom: 0; }
+
+a { color: inherit; }
+
+img, svg { display: block; max-width: 100%; height: auto; }
+
+::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* --- Layout primitives -------------------------------------------------- */
+
+.wrap {
+  width: 100%;
+  max-width: 1140px;
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.wrap--narrow { max-width: 760px; }
+
+.section { padding-block: var(--section-y); }
+
+.rule { height: 1px; background: var(--rule); border: 0; margin: 0; }
+
+/* Small-caps eyebrow. Letterspacing is what makes this read as typography
+   rather than as a badge component. */
+.label {
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 1.4rem;
+}
+
+.lead {
+  font-size: var(--t-lead);
+  line-height: 1.5;
+  color: var(--ink-2);
+  max-width: 46ch;
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.95rem 1.6rem;
+  border-radius: 999px;
+  background: var(--accent-deep);
+  color: var(--canvas);
+  font-size: var(--t-small);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  border: 0;
+  transition: transform .18s var(--ease), background-color .18s var(--ease);
+}
+@media (prefers-color-scheme: dark) {
+  .btn { color: #101311; }
+}
+.btn:hover { background: var(--accent); }
+.btn:active { transform: translateY(1px); }
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+}
+.btn--ghost:hover { background: transparent; border-color: var(--ink-3); }
+
+/* Inline link with an underline that wipes in rather than just appearing. */
+.link {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size .3s var(--ease);
+  padding-bottom: 1px;
+}
+.link:hover { background-size: 100% 1px; }
+
+/* --- Scroll reveal ------------------------------------------------------ */
+
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity .55s var(--ease), transform .55s var(--ease);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+[data-reveal].is-in { opacity: 1; transform: none; }
+
+/* Anything that moves, stops moving. Not negotiable. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  [data-reveal] { opacity: 1; transform: none; }
+}

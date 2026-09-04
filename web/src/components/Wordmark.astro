@@ -1,0 +1,22 @@
+---
+// Text wordmark, not an image. Instrument Serif at a tight tracking already
+// reads as a logotype, so the site needs no asset to look finished — and this
+// swaps for an SVG in one place when the real mark is drawn.
+interface Props { size?: string; }
+const { size = '1.5rem' } = Astro.props;
+---
+<span class="wordmark" style={`--size:${size}`}>nosh</span>
+
+<style>
+  .wordmark {
+    font-family: var(--font-display);
+    font-size: var(--size);
+    letter-spacing: -0.035em;
+    line-height: 1;
+    color: var(--accent-deep);
+    display: inline-block;
+  }
+  @media (prefers-color-scheme: dark) {
+    .wordmark { color: var(--ink); }
+  }
+</style>

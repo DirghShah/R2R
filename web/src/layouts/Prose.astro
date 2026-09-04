@@ -1,0 +1,54 @@
+---
+import Base from './Base.astro';
+
+interface Props { title: string; description: string; updated: string; }
+const { title, description, updated } = Astro.props;
+---
+<Base title={`${title} — Nosh`} description={description}>
+  <article class="section">
+    <div class="wrap wrap--narrow prose">
+      <header>
+        <h1>{title}</h1>
+        <p class="updated">Last updated {updated}</p>
+      </header>
+      <slot />
+    </div>
+  </article>
+</Base>
+
+<style is:global>
+  .prose h1 { font-size: clamp(2.25rem, 6vw, 3.5rem); }
+  .prose > header { margin-bottom: 3.5rem; }
+  .prose .updated {
+    font-size: var(--t-small);
+    color: var(--ink-3);
+    margin: 1.1rem 0 0;
+  }
+  .prose h2 {
+    font-size: clamp(1.35rem, 2.6vw, 1.75rem);
+    margin: 3.25rem 0 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+  }
+  .prose h3 {
+    font-family: var(--font-body);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    margin: 2rem 0 .6rem;
+  }
+  .prose p, .prose li { color: var(--ink-2); }
+  .prose ul { padding-left: 1.15rem; margin: 0 0 1.1em; max-width: var(--measure); }
+  .prose li { margin-bottom: .5rem; }
+  .prose li::marker { color: var(--ink-3); }
+  .prose strong { color: var(--ink); font-weight: 600; }
+  .prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* Pulled-out clause, for the paragraphs that actually matter. */
+  .prose .key {
+    border-left: 2px solid var(--accent);
+    padding: .15rem 0 .15rem 1.25rem;
+    margin: 1.6rem 0;
+    color: var(--ink);
+  }
+</style>

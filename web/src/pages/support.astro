@@ -1,0 +1,69 @@
+---
+import Prose from '../layouts/Prose.astro';
+
+const help = [
+  {
+    q: 'A reel did not produce any pins',
+    a: 'Nosh only pins places you can physically visit. Meal-kit ads, recipe videos and product promos are rejected on purpose — you will see “Not a place” with a reason. If a genuine restaurant reel came back empty, send us the link.',
+  },
+  {
+    q: 'A pin landed in the wrong spot',
+    a: 'Open the place, tap the location, and drag the pin to the right position. Chains with many branches are the usual culprit. If a place could not be located at all it stays in your list marked as unpinned, and you can place it by hand.',
+  },
+  {
+    q: 'Analysis is stuck on “Analyzing”',
+    a: 'Most reels finish in about thirty seconds. If one has been going for several minutes, pull to refresh the activity list. If it is still stuck, email us the link.',
+  },
+  {
+    q: 'An invite link opened Safari instead of the app',
+    a: 'This happens when the app was installed before invite links were set up. Delete Nosh, reinstall it, then tap the link again.',
+  },
+  {
+    q: 'I want to rename a map',
+    a: 'Open the map switcher, tap the “…” next to any map, then the pencil beside its name. Any member of a shared map can rename it, and everyone sees the new name.',
+  },
+  {
+    q: 'How do I delete my account?',
+    a: 'Profile → Delete account. It permanently removes your account, your maps and every place you saved. It cannot be undone.',
+  },
+];
+---
+<Prose
+  title="Support"
+  description="Help with Nosh, and how to get in touch."
+  updated="September 2026"
+>
+  <p>
+    Something broken, confusing, or missing? Email
+    <a href="mailto:dirghvshah@gmail.com">dirghvshah@gmail.com</a>. It is read by
+    the person who built the app, and you will normally get a reply within a day.
+  </p>
+  <p>
+    If you are reporting a problem with a specific reel, include the link — it
+    makes the difference between a guess and a fix.
+  </p>
+
+  <h2>Common questions</h2>
+  {help.map((h) => (
+    <>
+      <h3>{h.q}</h3>
+      <p>{h.a}</p>
+    </>
+  ))}
+
+  <h2>Reporting content or a user</h2>
+  <p>
+    To report objectionable content or abusive behaviour on a shared map, email
+    <a href="mailto:dirghvshah@gmail.com">dirghvshah@gmail.com</a> with the map
+    name and what you saw. Reports are reviewed and acted on within 24 hours,
+    and accounts that violate the <a href="/terms">Terms</a> are removed.
+  </p>
+
+  <h2>Privacy and data</h2>
+  <p>
+    What we collect and who processes it is set out in the
+    <a href="/privacy">Privacy Policy</a>. To request a copy of your data or have
+    it deleted, email us — or delete your account from Profile → Delete account,
+    which removes everything immediately.
+  </p>
+</Prose>

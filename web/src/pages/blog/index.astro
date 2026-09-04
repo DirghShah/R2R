@@ -1,0 +1,56 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.published.valueOf() - a.data.published.valueOf(),
+);
+const fmt = (d: Date) =>
+  d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+---
+<Base
+  title="Blog — Nosh"
+  description="Guides on saving places from Instagram Reels and TikTok, organising what you save, and planning trips from short-form video."
+>
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <p class="label" data-reveal>Writing</p>
+      <h1 data-reveal>Notes on saving places<br />from short video.</h1>
+
+      <div class="list">
+        {posts.map((p) => (
+          <a href={`/blog/${p.id}/`} class="item" data-reveal>
+            <time datetime={p.data.published.toISOString()}>{fmt(p.data.published)}</time>
+            <h2>{p.data.title}</h2>
+            <p>{p.data.description}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  h1 { max-width: 16ch; }
+  .list { margin-top: clamp(3rem, 7vw, 4.5rem); border-top: 1px solid var(--rule); }
+  .item {
+    display: block;
+    padding: 2rem 0;
+    border-bottom: 1px solid var(--rule);
+    text-decoration: none;
+    transition: opacity .25s var(--ease);
+  }
+  .item:hover { opacity: .62; }
+  time {
+    font-size: var(--t-label);
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .item h2 {
+    font-size: clamp(1.35rem, 2.6vw, 1.85rem);
+    margin: .7rem 0 .55rem;
+    max-width: 24ch;
+  }
+  .item p { color: var(--ink-2); font-size: var(--t-small); max-width: 58ch; margin: 0; }
+</style>

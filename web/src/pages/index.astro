@@ -1,0 +1,418 @@
+---
+import Base from '../layouts/Base.astro';
+import Shot from '../components/Shot.astro';
+import Wordmark from '../components/Wordmark.astro';
+
+const steps = [
+  {
+    n: '01',
+    title: 'Share the reel',
+    body: 'From Instagram, TikTok or YouTube, hit Share and pick Nosh. That is the entire interaction. No copying links, no switching apps.',
+    shot: 'Instagram share sheet with Nosh visible in the row',
+  },
+  {
+    n: '02',
+    title: 'It watches the reel properly',
+    body: 'The caption, the text burned onto the screen, the tagged accounts, and what the creator actually says out loud. Most places live in the on-screen text, which is why reading only the caption misses them.',
+    shot: 'Analyzing state — progress card with the reel thumbnail',
+  },
+  {
+    n: '03',
+    title: 'Pins land on your map',
+    body: 'About thirty seconds later, with the address, the hours, what to order, and a link back to the reel you got it from. Close the app; a notification tells you when it is done.',
+    shot: 'Map screen, ~10 pins, filter chips along the top',
+  },
+];
+
+const features = [
+  {
+    label: 'Completeness',
+    title: 'Every place, not just the first one',
+    body: 'A “9 cafés in Dallas” reel becomes nine pins. Most tools stop at whichever venue is tagged in the post and quietly drop the other eight.',
+    shot: 'City list showing many places from one reel',
+  },
+  {
+    label: 'Detail',
+    title: 'It remembers what to order',
+    body: 'The dish the creator raved about, the tip about going before noon, the note that they only take cash. All of it pulled from the reel and kept with the pin.',
+    shot: 'Place detail — tips, what to order, hours',
+  },
+  {
+    label: 'Retrieval',
+    title: 'Findable when you are actually hungry',
+    body: 'Filter by cuisine, browse by city, or just open the map and see what is near you right now. Saved reels are a graveyard; a map is a plan.',
+    shot: 'Map with a cuisine filter applied',
+  },
+];
+
+const faqs = [
+  {
+    q: 'Which apps does it work with?',
+    a: 'Instagram Reels, TikTok and YouTube Shorts. Share from any of them.',
+  },
+  {
+    q: 'Why does it take about thirty seconds?',
+    a: 'It reads the caption, samples frames for on-screen text, listens to the audio, then geocodes each place it finds. You do not have to wait around — close the app and it will notify you.',
+  },
+  {
+    q: 'What happens if the reel is not about restaurants?',
+    a: 'It gets rejected rather than pinned. Meal-kit ads, recipe videos and product promos are not places you can visit, so Nosh tells you instead of cluttering your map.',
+  },
+  {
+    q: 'Does it store the videos?',
+    a: 'No. Frames and audio are fetched, read, and discarded. What is kept is the place data and a link back to the original reel.',
+  },
+  {
+    q: 'Can I share a map with friends?',
+    a: 'Yes. Any map can be shared by link. Everyone who joins can add their own reels to it, and you can see who added what.',
+  },
+  {
+    q: 'How do I delete my account?',
+    a: 'Profile → Delete account, inside the app. It removes your account and your saved places permanently.',
+  },
+];
+---
+
+<Base
+  title="Nosh — every food reel you saved, on one map"
+  description="Share an Instagram, TikTok or YouTube reel to Nosh and it pins every restaurant and café it mentions to your map, with tips, hours and what to order."
+>
+  <!-- ── Hero ─────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="wrap hero-in">
+      <div class="hero-copy">
+        <h1 data-reveal>Every food reel you saved, on one map.</h1>
+        <p class="lead" data-reveal>
+          Share a reel to Nosh. It reads the caption, the text on screen and what
+          is said out loud, then pins every place it mentions — with the address,
+          the hours and what to order.
+        </p>
+        <div class="cta" id="get" data-reveal>
+          <a href="#" class="btn">
+            <svg width="15" height="18" viewBox="0 0 14 17" fill="currentColor" aria-hidden="true">
+              <path d="M11.6 9c0-2 1.6-3 1.7-3-.9-1.4-2.4-1.5-2.9-1.6-1.2-.1-2.4.7-3 .7-.6 0-1.6-.7-2.6-.7C3.5 4.4 2.2 5.2 1.5 6.5c-1.4 2.4-.4 6 1 8 .7 1 1.5 2 2.5 2 1 0 1.4-.6 2.6-.6s1.5.6 2.6.6 1.7-1 2.4-2c.7-1.1 1-2.2 1-2.3 0 0-1.9-.7-2-2.9zM9.7 3.2c.5-.6.9-1.5.8-2.4-.8 0-1.8.5-2.3 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.8-.5 2.3-1.2z"/>
+            </svg>
+            Download on the App Store
+          </a>
+          <p class="soon">Coming soon — iPhone</p>
+        </div>
+      </div>
+
+      <div class="hero-shot" data-reveal>
+        <Shot n={1} what="Map screen with pins and filter chips — your best-looking screen" size="290px" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ── The problem ──────────────────────────────────────────────────── -->
+  <section class="section problem">
+    <div class="wrap wrap--narrow">
+      <p class="label" data-reveal>The problem</p>
+      <h2 data-reveal>You have saved two hundred reels.<br /><em>You have been to none of them.</em></h2>
+      <p class="lead" data-reveal>
+        Saved folders are where good recommendations go to be forgotten. The
+        place you wanted to try is in there somewhere, four hundred posts down,
+        with no name you can search and no idea which city it was in.
+      </p>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- ── How it works — sticky showpiece ──────────────────────────────── -->
+  <section class="section how" id="how">
+    <div class="wrap">
+      <p class="label" data-reveal>How it works</p>
+      <div class="how-grid">
+        <div class="how-steps">
+          {steps.map((s, i) => (
+            <article class="step" data-step={i}>
+              <span class="step-n">{s.n}</span>
+              <h3>{s.title}</h3>
+              <p>{s.body}</p>
+            </article>
+          ))}
+        </div>
+
+        <div class="how-sticky">
+          <div class="how-stage">
+            {steps.map((s, i) => (
+              <div class="how-slide" data-slide={i} data-active={i === 0 ? '' : undefined}>
+                <Shot n={i + 2} what={s.shot} size="270px" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- ── Features ─────────────────────────────────────────────────────── -->
+  <section class="section">
+    <div class="wrap features">
+      {features.map((f, i) => (
+        <article class={`feature ${i % 2 ? 'feature--flip' : ''}`}>
+          <div class="feature-copy" data-reveal>
+            <p class="label">{f.label}</p>
+            <h3>{f.title}</h3>
+            <p>{f.body}</p>
+          </div>
+          <div class="feature-shot" data-reveal>
+            <Shot n={i + 5} what={f.shot} size="250px" />
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <!-- ── Shared maps ──────────────────────────────────────────────────── -->
+  <section class="section shared" id="shared">
+    <div class="wrap shared-in">
+      <div data-reveal>
+        <p class="label">Together</p>
+        <h2>The group chat already has the list. Put it somewhere.</h2>
+        <p class="lead">
+          Share any map by link. Everyone who joins adds their own reels to it,
+          and you can see who added what. No accounts to find, no friend
+          requests — the link is the invitation.
+        </p>
+      </div>
+      <div class="shared-shot" data-reveal>
+        <Shot n={8} what="Shared map — member avatars and the invite sheet" size="260px" />
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- ── Privacy ──────────────────────────────────────────────────────── -->
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <p class="label" data-reveal>Privacy</p>
+      <h2 data-reveal>Two things worth saying plainly.</h2>
+      <div class="privacy-pair">
+        <div data-reveal>
+          <h3>The video is never stored.</h3>
+          <p>
+            Frames and audio are fetched, read once, and discarded. What Nosh
+            keeps is the place data and a link back to the reel you got it from.
+          </p>
+        </div>
+        <div data-reveal>
+          <h3>Your notes stay on your phone.</h3>
+          <p>
+            Notes and visited marks live on your device and are never uploaded —
+            even inside a shared map. Everyone sees the same places; only you see
+            what you wrote about them.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FAQ ──────────────────────────────────────────────────────────── -->
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <p class="label" data-reveal>Questions</p>
+      <h2 data-reveal>Before you ask.</h2>
+      <div class="faq">
+        {faqs.map((f) => (
+          <details data-reveal>
+            <summary><span>{f.q}</span></summary>
+            <p>{f.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Closing ──────────────────────────────────────────────────────── -->
+  <section class="section closing">
+    <div class="wrap wrap--narrow center">
+      <Wordmark size="clamp(3.5rem, 12vw, 6rem)" />
+      <p class="lead closing-lead" data-reveal>Stop saving. Start going.</p>
+      <a href="#" class="btn" data-reveal>Download on the App Store</a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* Hero ---------------------------------------------------------------- */
+  .hero { padding-block: clamp(3.5rem, 9vw, 7rem) clamp(4rem, 10vw, 8rem); }
+  .hero-in {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+    gap: clamp(2rem, 6vw, 5rem);
+    align-items: center;
+  }
+  .hero h1 { max-width: 13ch; }
+  .hero .lead { margin-top: 1.6rem; }
+  .cta { margin-top: 2.4rem; display: flex; flex-direction: column; align-items: flex-start; gap: .8rem; }
+  .soon { font-size: 0.8125rem; color: var(--ink-3); margin: 0; }
+  .hero-shot { display: flex; justify-content: center; }
+
+  @media (max-width: 52rem) {
+    .hero-in { grid-template-columns: 1fr; }
+    .hero-shot { order: -1; }
+  }
+
+  /* Problem ------------------------------------------------------------- */
+  .problem em { font-style: italic; color: var(--ink-3); }
+  .problem .lead { margin-top: 1.8rem; }
+
+  /* How it works -------------------------------------------------------- */
+  .how-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, .8fr);
+    gap: clamp(2rem, 6vw, 5rem);
+    align-items: start;
+  }
+  .how-steps { display: flex; flex-direction: column; gap: clamp(4rem, 16vh, 9rem); }
+  .step { max-width: 42ch; }
+  .step-n {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--accent);
+    display: block;
+    margin-bottom: .7rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .step h3 { margin-bottom: .7rem; }
+  .step p { color: var(--ink-2); }
+
+  /* The phone stays put while the steps scroll past it; the screen behind
+     crossfades as each step becomes the one you are reading. */
+  .how-sticky { position: sticky; top: 22vh; }
+  .how-stage { position: relative; display: grid; place-items: center; }
+  .how-slide {
+    grid-area: 1 / 1;
+    opacity: 0;
+    transform: translateY(8px) scale(.985);
+    transition: opacity .5s var(--ease), transform .5s var(--ease);
+    pointer-events: none;
+  }
+  .how-slide[data-active] { opacity: 1; transform: none; pointer-events: auto; }
+
+  @media (max-width: 52rem) {
+    .how-grid { grid-template-columns: 1fr; }
+    .how-sticky { display: none; }         /* stacked phones would be noise */
+    .how-steps { gap: 3.5rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .how-slide { transition: none; }
+  }
+
+  /* Features ------------------------------------------------------------ */
+  .features { display: flex; flex-direction: column; gap: clamp(4.5rem, 11vw, 8rem); }
+  .feature {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, .72fr);
+    gap: clamp(2rem, 6vw, 5rem);
+    align-items: center;
+  }
+  .feature--flip .feature-copy { order: 2; }
+  .feature-shot { display: flex; justify-content: center; }
+  .feature-copy h3 { margin-bottom: .8rem; }
+  .feature-copy p { color: var(--ink-2); max-width: 44ch; }
+
+  @media (max-width: 52rem) {
+    .feature, .feature--flip { grid-template-columns: 1fr; }
+    .feature--flip .feature-copy { order: 0; }
+  }
+
+  /* Shared -------------------------------------------------------------- */
+  .shared-in {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, .7fr);
+    gap: clamp(2rem, 6vw, 5rem);
+    align-items: center;
+  }
+  .shared h2 { max-width: 16ch; }
+  .shared .lead { margin-top: 1.5rem; }
+  .shared-shot { display: flex; justify-content: center; }
+  @media (max-width: 52rem) { .shared-in { grid-template-columns: 1fr; } }
+
+  /* Privacy ------------------------------------------------------------- */
+  .privacy-pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    gap: clamp(2rem, 5vw, 3.5rem);
+    margin-top: 3rem;
+  }
+  .privacy-pair h3 { margin-bottom: .6rem; }
+  .privacy-pair p { color: var(--ink-2); }
+
+  /* FAQ ----------------------------------------------------------------- */
+  .faq { margin-top: 2.75rem; border-top: 1px solid var(--rule); }
+  details { border-bottom: 1px solid var(--rule); }
+  summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1.4rem 0;
+    cursor: pointer;
+    list-style: none;
+    font-weight: 500;
+    transition: color .2s var(--ease);
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary:hover { color: var(--accent); }
+  /* Hairline plus/minus drawn in CSS — no icon font, no SVG sprite. */
+  summary::after {
+    content: '';
+    flex: none;
+    width: 11px; height: 11px;
+    background:
+      linear-gradient(currentColor, currentColor) center/100% 1px no-repeat,
+      linear-gradient(currentColor, currentColor) center/1px 100% no-repeat;
+    opacity: .5;
+    transition: transform .3s var(--ease), opacity .2s var(--ease);
+  }
+  details[open] summary::after { transform: rotate(90deg); opacity: .85; }
+  details[open] summary { color: var(--ink); }
+  details p { padding-bottom: 1.5rem; color: var(--ink-2); max-width: 60ch; margin: 0; }
+
+  /* Closing ------------------------------------------------------------- */
+  .center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1.4rem; }
+  .closing-lead { max-width: none; }
+</style>
+
+<script>
+  // Drives the sticky phone. Each step "wins" when it is nearest the middle of
+  // the viewport, so the screen matches whatever you are reading.
+  const steps = [...document.querySelectorAll<HTMLElement>('[data-step]')];
+  const slides = [...document.querySelectorAll<HTMLElement>('[data-slide]')];
+
+  if (steps.length && slides.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    let current = -1;
+    let ticking = false;
+
+    const sync = () => {
+      ticking = false;
+      const mid = window.innerHeight / 2;
+      let best = 0;
+      let bestDist = Infinity;
+
+      steps.forEach((step, i) => {
+        const r = step.getBoundingClientRect();
+        const dist = Math.abs(r.top + r.height / 2 - mid);
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      });
+
+      if (best === current) return;
+      current = best;
+      slides.forEach((s, i) => s.toggleAttribute('data-active', i === best));
+    };
+
+    addEventListener('scroll', () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(sync);
+    }, { passive: true });
+
+    sync();
+  }
+</script>
