@@ -22,7 +22,7 @@ settings:
     # set, and they weren't, anywhere. That's what App Store Connect rejected
     # the upload for (code 90057, SharedKit.framework specifically).
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "4"
     # The deployed backend. Works from anywhere — cellular, other Wi-Fi, a
     # friend's phone — which LAN addresses never did.
     API_BASE_URL: "https://r2r-production-727a.up.railway.app"
@@ -81,6 +81,7 @@ targets:
     info:
       path: ReelMap/Info.plist
       properties:
+        CFBundleDisplayName: Nosh
         API_BASE_URL: $(API_BASE_URL)
         UILaunchScreen: {}
         # Shown in the "Allow ReelMap to use your location?" prompt — required or
@@ -108,7 +109,7 @@ targets:
     info:
       path: ShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: ReelMap
+        CFBundleDisplayName: Nosh
         API_BASE_URL: $(API_BASE_URL)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
