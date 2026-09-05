@@ -283,3 +283,43 @@ public enum SessionExpiry {
         NotificationCenter.default.post(name: didExpire, object: nil)
     }
 }
+
+
+// MARK: - Moderation
+
+/// Why someone is reporting something. Raw values match the backend's
+/// allowlist in `app/routers/moderation.py`.
+public enum ReportReason: String, CaseIterable, Sendable {
+    case offensive
+    case harassment
+    case spam
+    case illegal
+    case other
+
+    public var label: String {
+        switch self {
+        case .offensive:  return "Offensive content"
+        case .harassment: return "Harassment or bullying"
+        case .spam:       return "Spam or misleading"
+        case .illegal:    return "Illegal content"
+        case .other:      return "Something else"
+        }
+    }
+}
+
+public enum ReportTarget: String, Sendable {
+    case map, user, place
+}
+
+public struct BlockedUser: Codable, Identifiable, Hashable, Sendable {
+    public var id: String { userID }
+    public let userID: String
+    public let displayName: String?
+    public let avatarColor: String?
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case displayName = "display_name"
+        case avatarColor = "avatar_color"
+    }
+}

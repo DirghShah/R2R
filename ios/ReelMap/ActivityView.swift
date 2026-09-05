@@ -63,15 +63,13 @@ private struct ActivityRow: View {
         .padding(.vertical, 4)
     }
 
+    // Deliberately not the reel's thumbnail. Rendering it means hotlinking
+    // Instagram's CDN and *displaying* their content, which is the one thing
+    // App Store Guideline 5.2.2 is actually about — as opposed to the place
+    // names and addresses we extract, which are facts. The platform glyph
+    // carries the same information for the user at none of that cost.
     private var thumbnail: some View {
-        Group {
-            if let s = item.thumbnailURL, let url = URL(string: s) {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() }
-                    placeholder: { placeholderIcon }
-            } else {
-                placeholderIcon
-            }
-        }
+        placeholderIcon
         .frame(width: 52, height: 52)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }

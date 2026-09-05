@@ -209,9 +209,9 @@ struct AddReelScreen: View {
     private func queueRow(pos: Int?, item: ReelActivity, chip: String, chipColor: Color) -> some View {
         HStack(spacing: 12) {
             ZStack {
-                if let s = item.thumbnailURL, let url = URL(string: s) {
-                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.cardStroke }
-                } else if let pos {
+                // No reel thumbnail: see the note in ActivityView. The queue
+                // position or the platform glyph says what this row is.
+                if let pos {
                     Text("\(pos)").font(.system(size: 13, weight: .bold)).foregroundStyle(.inkMuted)
                 } else {
                     Image(systemName: PlatformStyle.icon(item.platform)).font(.system(size: 14)).foregroundStyle(.inkMuted)

@@ -19,6 +19,9 @@ struct PlaceDetailScreen: View {
     @State private var visited = false
     @State private var note = ""
     @State private var confirmDelete = false
+    // Guideline 1.2. A place in a shared map was put there by another person,
+    // which makes it reportable content.
+    @State private var reporting: ReportSubject?
     @State private var deleting = false
     @State private var deleteError: String?
     @State private var showLocationPicker = false
@@ -47,6 +50,7 @@ struct PlaceDetailScreen: View {
                     sourcedFrom
                     actions
                     removeButton
+            reportButton
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 34)
             }
@@ -66,6 +70,9 @@ struct PlaceDetailScreen: View {
         .confirmationDialog("Open in Maps", isPresented: $showMapsDialog, titleVisibility: .visible) {
             Button("Apple Maps") { openAppleMaps() }
             Button("Google Maps") { openGoogleMaps() }
+        }
+        .sheet(item: $reporting) {
+            ReportSheet(target: $0.target, targetID: $0.id, subject: $0.name)
         }
         .confirmationDialog("Remove \(place.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Remove pin", role: .destructive) { Task { await deletePlace() } }
@@ -373,6 +380,20 @@ struct PlaceDetailScreen: View {
         }
         .buttonStyle(.plain)
         .disabled(deleting)
+    }
+
+    /// Removing a pin only affects your map; reporting escalates it to us.
+    /// Both are needed: one is tidying, the other is moderation.
+    private var reportButton: some View {
+        Button {
+            Haptics.tap()
+            reporting = ReportSubject(target: .place, id: place.id, name: place.name)
+        } label: {
+            Label("Report this place", systemImage: "flag")
+                .font(.system(size: 13)).foregroundStyle(.inkMuted)
+                .frame(maxWidth: .infinity).padding(.vertical, 10)
+        }
+        .buttonStyle(.plain)
     }
 
     private func deletePlace() async {

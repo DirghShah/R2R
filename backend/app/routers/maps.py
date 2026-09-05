@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.config import settings
 from app.db import get_db
+from app.routers.moderation import blocked_ids
 from app.maps import (
     generate_invite_code,
     member_count,
@@ -197,6 +198,7 @@ def list_members(
     db: Session = Depends(get_db),
 ) -> list[MapMemberOut]:
     require_member(db, map_id, user.id)
+    hidden = blocked_ids(db, user.id)
     rows = db.execute(
         select(MapMember, User)
         .join(User, User.id == MapMember.user_id)
@@ -212,6 +214,7 @@ def list_members(
             joined_at=mem.joined_at,
         )
         for mem, u in rows
+        if u.id not in hidden
     ]
 
 

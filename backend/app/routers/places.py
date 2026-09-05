@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
+from app.routers.moderation import blocked_ids
 from app.db import get_db
 from app.maps import member_map_ids, require_member
 from app.models import City, Collection, Map, MapMember, Place, ReelSource, User, UserPlace
@@ -31,6 +32,10 @@ def list_places(
     if not map_ids:
         return []
 
+    # Blocking means "stop showing me this person's contributions". Applied
+    # here rather than at write time so unblocking restores everything.
+    hidden = blocked_ids(db, user.id)
+
     stmt = (
         select(UserPlace)
         .options(
@@ -44,7 +49,8 @@ def list_places(
     if city:
         stmt = stmt.join(UserPlace.place).join(Place.city).where(City.name == city)
 
-    return [_to_out(up) for up in db.scalars(stmt).unique()]
+    return [_to_out(up) for up in db.scalars(stmt).unique()
+            if up.user_id not in hidden]
 
 
 def _to_out(up: UserPlace) -> UserPlaceOut:

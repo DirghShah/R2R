@@ -90,9 +90,8 @@ Two paragraphs are not decorative and should not be edited casually:
 - **`src/pages/terms.astro`, section 12** — the Apple Inc. notice. Apple
   requires these clauses when not using their standard EULA.
 
-### TODO before submitting to the App Store
-
-Terms §3 and the support page currently route content reports to email, because
-there is no in-app Report feature yet. Apple Guideline 1.2 expects in-app
-reporting and blocking for apps with user-generated content. When that ships,
-tighten both to describe it.
+Terms §3 and the support page describe the in-app Report and Block features
+(`ios/ReelMap/ReportSheet.swift`, and the menus in `MapDetailSheet`,
+`PlaceDetailScreen` and `ProfileSheet`). If that UI moves, update both pages —
+a legal document describing a feature that isn't there is worse than one that
+says nothing.

@@ -22,6 +22,12 @@ struct MapDetailSheet: View {
     @State private var renaming = false
     @State private var draftName = ""
 
+    // Guideline 1.2: an app with user-generated content must offer reporting
+    // and blocking. Map names, display names and the places people add to a
+    // shared map are that content.
+    @State private var reporting: ReportSubject?
+    @State private var pendingBlock: MapMemberSummary?
+
     init(map: MapSummary) {
         self.map = map
         _displayedName = State(initialValue: map.name)
@@ -43,8 +49,33 @@ struct MapDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu {
+                        Button(role: .destructive) {
+                            reporting = ReportSubject(target: .map, id: map.id, name: displayedName)
+                        } label: {
+                            Label("Report this map", systemImage: "flag")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
             }
             .task { await load() }
+            .sheet(item: $reporting) {
+                ReportSheet(target: $0.target, targetID: $0.id, subject: $0.name)
+            }
+            .confirmationDialog("Block \(pendingBlock?.displayName ?? "this person")?",
+                                isPresented: .init(get: { pendingBlock != nil },
+                                                   set: { if !$0 { pendingBlock = nil } }),
+                                titleVisibility: .visible) {
+                Button("Block", role: .destructive) {
+                    if let member = pendingBlock { Task { await block(member) } }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You'll stop seeing the places they add and their name in member lists. They stay in the map — only the owner can remove people — and they aren't told.")
+            }
             .confirmationDialog(removalTitle, isPresented: $confirmRemoval, titleVisibility: .visible) {
                 Button(removalVerb, role: .destructive) { Task { await removeSelf() } }
                 Button("Cancel", role: .cancel) {}
@@ -153,17 +184,36 @@ struct MapDetailSheet: View {
                                 .font(.system(size: 12)).foregroundStyle(.inkMuted)
                         }
                         Spacer()
-                        // Only the owner removes others, and the owner can't be
-                        // removed — deleting the map is the way out for them.
-                        if map.isOwner && !member.isOwner {
-                            Button {
-                                Haptics.tap()
-                                pendingRemoval = member
+                        // Anyone can report or block anyone else; only the owner
+                        // can remove people, and the owner can't be removed at
+                        // all — deleting the map is their way out.
+                        if member.userID != AuthStore.userID {
+                            Menu {
+                                Button(role: .destructive) {
+                                    reporting = ReportSubject(
+                                        target: .user, id: member.userID,
+                                        name: member.displayName ?? "this person")
+                                } label: { Label("Report", systemImage: "flag") }
+
+                                Button(role: .destructive) {
+                                    pendingBlock = member
+                                } label: { Label("Block", systemImage: "hand.raised") }
+
+                                if map.isOwner && !member.isOwner {
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        pendingRemoval = member
+                                    } label: {
+                                        Label("Remove from map", systemImage: "minus.circle")
+                                    }
+                                }
                             } label: {
-                                Image(systemName: "minus.circle")
-                                    .font(.system(size: 17)).foregroundStyle(.closedRed)
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.inkMuted)
+                                    .frame(width: 30, height: 30)
+                                    .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, 9)
@@ -258,6 +308,19 @@ struct MapDetailSheet: View {
         }
     }
 
+    private func block(_ member: MapMemberSummary) async {
+        do {
+            try await APIClient.shared.block(userID: member.userID)
+            Haptics.success()
+            // Their row disappears from the list the server returns, and their
+            // places drop out of the next sync.
+            await load()
+            await store.refresh(force: true)
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
     private func rename() async {
         let trimmed = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != displayedName else { return }
@@ -271,6 +334,14 @@ struct MapDetailSheet: View {
             errorText = error.localizedDescription
         }
     }
+}
+
+/// `sheet(item:)` needs Identifiable, and the three report targets differ only
+/// in what they point at.
+struct ReportSubject: Identifiable {
+    let target: ReportTarget
+    let id: String
+    let name: String
 }
 
 /// Initial-and-colour avatar. No photo upload means no storage, no moderation,

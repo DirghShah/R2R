@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     apify_actor_youtube: str = "streamers/youtube-scraper"  # youtube shorts
     apify_cost_per_reel: float = 0.005  # rough estimate ($/reel) for the cost log
 
+    # A reel stuck in pending/processing for longer than this is treated as
+    # abandoned and re-queued. Analysis normally takes 15-60s; the gap is
+    # generous so a slow reel is never re-run while it's still working.
+    stale_reel_minutes: int = 15
+
     # --- What we're willing to pin ---
     # Reels that aren't recommendations of visitable venues (meal-kit ads,
     # recipe videos, product promos) are rejected outright before geocoding —

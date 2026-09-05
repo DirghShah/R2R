@@ -110,6 +110,8 @@ def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
             return {"status": "done", "places": count, "cached": True}
 
         reel.status = "processing"
+        reel.started_at = datetime.now(timezone.utc)
+        reel.error = None
         db.commit()
 
         started = time.monotonic()

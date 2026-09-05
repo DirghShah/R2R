@@ -19,6 +19,9 @@ struct ProfileSheet: View {
     @State private var confirmDelete = false
     @State private var working = false
     @State private var errorText: String?
+    // Guideline 1.2 requires blocking; it also requires the block to be
+    // undoable, which means somewhere to see who you've blocked.
+    @State private var blocked: [BlockedUser] = []
 
     var body: some View {
         NavigationStack {
@@ -27,6 +30,7 @@ struct ProfileSheet: View {
                     identityCard
                     usageCard
                     sharedMapsCard
+                    blockedCard
                     accountActions
                 }
                 .padding(20)
@@ -37,7 +41,10 @@ struct ProfileSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .task { profile = try? await APIClient.shared.me() }
+            .task {
+                profile = try? await APIClient.shared.me()
+                blocked = (try? await APIClient.shared.blockedUsers()) ?? []
+            }
             .alert("Your name", isPresented: $editingName) {
                 TextField("Name", text: $draftName)
                 Button("Save") { Task { await saveName() } }
@@ -125,6 +132,33 @@ struct ProfileSheet: View {
         }
     }
 
+    /// Only rendered when there's something in it — an empty "Blocked (0)"
+    /// row is clutter for the overwhelming majority who never block anyone.
+    @ViewBuilder private var blockedCard: some View {
+        if !blocked.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Blocked").font(.display(15, .semibold)).foregroundStyle(.ink)
+                Text("You don't see the places they add, or their name in member lists.")
+                    .font(.system(size: 12.5)).foregroundStyle(.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(blocked) { person in
+                    HStack(spacing: 11) {
+                        InitialAvatar(name: person.displayName, colorHex: person.avatarColor, size: 30)
+                        Text(person.displayName ?? "Someone")
+                            .font(.system(size: 14, weight: .medium)).foregroundStyle(.ink)
+                        Spacer()
+                        Button("Unblock") { Task { await unblock(person) } }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.linkBlue)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16).card(20)
+        }
+    }
+
     private var accountActions: some View {
         VStack(spacing: 10) {
             Button { Haptics.tap(); confirmSignOut = true } label: {
@@ -156,6 +190,18 @@ struct ProfileSheet: View {
         guard !name.isEmpty else { return }
         do {
             profile = try await APIClient.shared.updateDisplayName(name)
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func unblock(_ person: BlockedUser) async {
+        do {
+            try await APIClient.shared.unblock(userID: person.userID)
+            blocked.removeAll { $0.userID == person.userID }
+            Haptics.success()
+            // Their places come back on the next sync; nothing was deleted.
+            await store.refresh(force: true)
         } catch {
             errorText = error.localizedDescription
         }

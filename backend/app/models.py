@@ -143,6 +143,10 @@ class ReelSource(Base):
     summary: Mapped[str | None] = mapped_column(String, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # When the current run started. A worker that dies mid-job leaves
+    # status="processing" forever, and without this there is no way to tell a
+    # stuck reel from one that is legitimately still working.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -269,3 +273,47 @@ class UserReel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     reel_source: Mapped[ReelSource] = relationship()
+
+
+class Report(Base):
+    """A user reporting objectionable content or behaviour.
+
+    Required by App Store Guideline 1.2: an app with user-generated content
+    must let people flag it. The surfaces that carry user content here are map
+    names, display names, and the places someone adds to a shared map.
+
+    Reports are stored rather than emailed so there is a reviewable record —
+    Apple asks how reports are handled, and "we read an inbox" is a weaker
+    answer than a queue with a status on each row.
+    """
+
+    __tablename__ = "reports"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    reporter_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    # "map" | "user" | "place"
+    target_type: Mapped[str] = mapped_column(String)
+    target_id: Mapped[str] = mapped_column(String, index=True)
+    reason: Mapped[str] = mapped_column(String)
+    note: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "open" | "actioned" | "dismissed"
+    status: Mapped[str] = mapped_column(String, default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Block(Base):
+    """One user blocking another.
+
+    Blocking hides the blocked person's places and their row in member lists,
+    for the blocker only. It deliberately does not remove anyone from a map:
+    the owner decides membership, and a block that silently ejected people
+    would be a griefing tool.
+    """
+
+    __tablename__ = "blocks"
+    __table_args__ = (UniqueConstraint("user_id", "blocked_user_id", name="uq_block_pair"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    blocked_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

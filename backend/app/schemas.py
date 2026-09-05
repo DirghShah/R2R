@@ -185,3 +185,33 @@ class UpdateMeRequest(BaseModel):
 class RegisterDeviceRequest(BaseModel):
     apns_token: str
     platform: str = "ios"
+
+
+# --- Moderation (App Store Guideline 1.2) --------------------------------
+
+
+class CreateReportRequest(BaseModel):
+    target_type: str  # map | user | place
+    target_id: str
+    reason: str  # offensive | harassment | spam | illegal | other
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class ReportOut(BaseModel):
+    id: str
+    target_type: str
+    target_id: str
+    reason: str
+    status: str
+    created_at: datetime
+
+
+class CreateBlockRequest(BaseModel):
+    user_id: str
+
+
+class BlockOut(BaseModel):
+    user_id: str
+    display_name: str | None = None
+    avatar_color: str | None = None
+    created_at: datetime | None = None

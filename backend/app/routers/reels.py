@@ -1,7 +1,7 @@
 """Submit a reel for analysis, list the user's activity feed, check status."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -48,7 +48,20 @@ def submit_reel(
         saved = _place_count(db, user.id, reel.id)
 
         # Still in flight — don't enqueue a second job for the same reel.
+        #
+        # Unless it's stuck. A worker killed mid-job leaves status="processing"
+        # committed with nothing left to finish it, and this branch used to
+        # return "still working" forever — the reel showed "Analyzing…" in the
+        # app permanently, with no way for the user to recover. Every worker
+        # restart created more of them.
         if reel.status in ("pending", "processing"):
+            if _is_stale(reel):
+                reel.status = "pending"
+                reel.started_at = None
+                db.commit()
+                enqueue_analyze(reel.id, user.id, map_id)
+                return ReelStatusResponse(reel_id=reel.id, status="pending",
+                                          place_count=saved)
             db.commit()
             return ReelStatusResponse(reel_id=reel.id, status=reel.status,
                                       place_count=saved, already_analyzed=True)
@@ -93,6 +106,22 @@ def submit_reel(
 
     enqueue_analyze(reel.id, user.id, map_id)
     return ReelStatusResponse(reel_id=reel.id, status=reel.status)
+
+
+def _is_stale(reel: ReelSource) -> bool:
+    """Has this reel been 'in progress' long enough that nothing is coming?
+
+    Falls back to created_at for reels queued before started_at existed, and
+    for ones that never left "pending" because the worker was down when they
+    were submitted.
+    """
+    marker = reel.started_at or reel.created_at
+    if marker is None:
+        return True
+    if marker.tzinfo is None:  # SQLite hands back naive datetimes
+        marker = marker.replace(tzinfo=timezone.utc)
+    age = datetime.now(timezone.utc) - marker
+    return age > timedelta(minutes=settings.stale_reel_minutes)
 
 
 def _roll_quota_period(user: User) -> None:

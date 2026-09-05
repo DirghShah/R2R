@@ -236,6 +236,41 @@ public actor APIClient {
         try await requestVoid("/devices", method: "POST", body: Body(apns_token: apnsToken))
     }
 
+    // MARK: Moderation
+
+    /// Report content. Required by App Store Guideline 1.2 for any app with
+    /// user-generated content — here that's map names, display names, and the
+    /// places someone adds to a shared map.
+    public func report(
+        _ target: ReportTarget, id: String, reason: ReportReason, note: String? = nil
+    ) async throws {
+        struct Body: Encodable {
+            let target_type: String
+            let target_id: String
+            let reason: String
+            let note: String?
+        }
+        try await requestVoid("/reports", method: "POST", body: Body(
+            target_type: target.rawValue, target_id: id,
+            reason: reason.rawValue, note: note))
+    }
+
+    public func blockedUsers() async throws -> [BlockedUser] {
+        try await request("/blocks")
+    }
+
+    /// Hides that person's places and their row in member lists, for you only.
+    /// It does not remove them from any map — the owner decides membership.
+    @discardableResult
+    public func block(userID: String) async throws -> BlockedUser {
+        struct Body: Encodable { let user_id: String }
+        return try await request("/blocks", method: "POST", body: Body(user_id: userID))
+    }
+
+    public func unblock(userID: String) async throws {
+        try await requestVoid("/blocks/\(userID)", method: "DELETE")
+    }
+
     // MARK: Reels
 
     /// `mapID` is where the pins land; nil means the caller's personal map.
