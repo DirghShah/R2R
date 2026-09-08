@@ -28,8 +28,10 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <meta property="og:url" content={canonical} />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <!-- TODO: replace with the real icon once the logo is drawn. -->
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Downscaled from the app icon, so a browser tab and the phone home
+         screen show the same mark. -->
+    <link rel="icon" href="/favicon.png" type="image/png" sizes="64x64" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
     <!-- Display face only. Body type is the system stack, which resolves to
          SF Pro on the iPhones this site is selling to — the same face the app

@@ -76,9 +76,12 @@ Capture at 1290 × 2796 (iPhone 15/16 Pro Max).
 | 7 | Features | The map with a cuisine filter applied |
 | 8 | Shared maps | A shared map showing member avatars, or the invite sheet |
 
-Also still placeholder: `public/favicon.svg`, and the wordmark in
-`src/components/Wordmark.astro` (currently live text in Instrument Serif — swap
-for an SVG when the logo is drawn).
+Logo assets are real now. `public/wordmark.svg` is the horizontal mark, inlined
+by `src/components/Wordmark.astro` so it inherits `currentColor` and works in
+both themes. `favicon.png` and `apple-touch-icon.png` are downscaled from the
+app icon at `ios/ReelMap/Assets.xcassets/AppIcon.appiconset/icon-1024.png`, so
+the browser tab and the phone home screen show the same mark — regenerate both
+if that icon changes.
 
 ## Copy that is load-bearing
 
