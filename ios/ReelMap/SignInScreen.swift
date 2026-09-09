@@ -15,9 +15,17 @@ struct SignInScreen: View {
     @State private var working = false
     @State private var errorText: String?
 
+    /// Pure black or pure white, not the app's warm canvas.
+    ///
+    /// This is the one screen that is only the mark, and the mark is drawn in
+    /// flat black ink — sitting it on an off-white ground makes it look like a
+    /// sticker on the wrong paper.
+    private var ground: Color { scheme == .dark ? .black : .white }
+    private var ink: Color { scheme == .dark ? .white : .black }
+
     var body: some View {
         ZStack {
-            Color.canvas.ignoresSafeArea()
+            ground.ignoresSafeArea()
             VStack(spacing: 0) {
                 Spacer()
                 hero
@@ -48,32 +56,37 @@ struct SignInScreen: View {
     }
 
     private var hero: some View {
-        VStack(spacing: 18) {
-            ZStack {
-                Circle().fill(Color.appAccent.opacity(0.12)).frame(width: 96, height: 96)
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 42, weight: .semibold))
-                    .foregroundStyle(.appAccent)
-            }
-            VStack(spacing: 8) {
-                Text("Nosh").font(.display(34, .bold)).foregroundStyle(.ink)
-                Text("Share a reel. Get the pin.")
-                    .font(.system(size: 17)).foregroundStyle(.inkSecondary)
-            }
+        VStack(spacing: 20) {
+            // The real wordmark, not the name set in a system font next to an
+            // icon. Same SVG the website uses, drawn as a template so one file
+            // is black on white and white on black without a second asset.
+            Image("Wordmark")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(height: 46)
+                .foregroundStyle(ink)
+                .accessibilityLabel("Nosh")
+
+            Text("Share a reel. Get the pin.")
+                .font(.system(size: 17))
+                .foregroundStyle(ink.opacity(0.55))
+
             VStack(alignment: .leading, spacing: 14) {
                 bullet("square.and.arrow.up", "Share reels straight from Instagram")
                 bullet("sparkles", "Places, tips and hours pulled out automatically")
                 bullet("person.2.fill", "Build maps together with friends")
             }
-            .padding(.top, 12)
+            .padding(.top, 16)
         }
     }
 
     private func bullet(_ icon: String, _ text: String) -> some View {
         HStack(spacing: 13) {
-            Image(systemName: icon).font(.system(size: 16)).foregroundStyle(.appAccent)
+            Image(systemName: icon).font(.system(size: 16))
+                .foregroundStyle(ink.opacity(0.45))
                 .frame(width: 24)
-            Text(text).font(.system(size: 15)).foregroundStyle(.ink)
+            Text(text).font(.system(size: 15)).foregroundStyle(ink)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
@@ -86,12 +99,12 @@ struct SignInScreen: View {
         // sibling instead.
         if working {
             HStack(spacing: 10) {
-                ProgressView().tint(.inkSecondary)
+                ProgressView().tint(ink.opacity(0.55))
                 Text("Signing in…").font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.inkSecondary)
+                    .foregroundStyle(ink.opacity(0.55))
             }
             .frame(maxWidth: .infinity).frame(height: 52)
-            .background(Color.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         } else {
             SignInWithAppleButton(.signIn) { request in
                 // fullName arrives ONLY on the very first authorization for
@@ -109,7 +122,7 @@ struct SignInScreen: View {
 
     private var footnote: some View {
         Text("We only store the places from reels you share — never the videos.")
-            .font(.system(size: 12)).foregroundStyle(.inkMuted)
+            .font(.system(size: 12)).foregroundStyle(ink.opacity(0.4))
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 16)

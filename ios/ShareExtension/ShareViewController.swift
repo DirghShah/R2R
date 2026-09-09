@@ -10,6 +10,18 @@ import UniformTypeIdentifiers
 final class ShareViewController: UIViewController {
     private let state = ShareState()
 
+    /// Presented *over* the app being shared from, not instead of it.
+    ///
+    /// The host presents this controller, and with the default .fullScreen it
+    /// tears the source app out of the hierarchy — so a clear background has
+    /// nothing behind it but black, and a small toast ends up floating in a
+    /// void. Overriding the getter rather than assigning in viewDidLoad is
+    /// what makes it stick: the host reads this before it presents.
+    override var modalPresentationStyle: UIModalPresentationStyle {
+        get { .overFullScreen }
+        set { _ = newValue }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
@@ -41,6 +53,7 @@ final class ShareViewController: UIViewController {
             // app exists for, so the destination is shown rather than asked.
             _ = try await APIClient.shared.submitReel(url: link, mapID: CurrentMap.id)
             state.mapName = CurrentMap.name
+            state.platform = SharePlatform(link: link)
             state.phase = .saved
             // Long enough to read one line, short enough that it feels like a
             // confirmation rather than a screen you have to wait out.
@@ -83,68 +96,89 @@ final class ShareViewController: UIViewController {
 
 // MARK: - UI
 
+/// Which platform the link came from, so the confirmation names the thing the
+/// user actually shared. "Saved" is vague; "Reel shared" is the receipt.
+enum SharePlatform {
+    case instagram, tiktok, youtube
+
+    init(link: String) {
+        let u = link.lowercased()
+        if u.contains("tiktok") { self = .tiktok }
+        else if u.contains("youtu") { self = .youtube }
+        else { self = .instagram }
+    }
+
+    var sharedLabel: String {
+        switch self {
+        case .instagram: return "Reel shared"
+        case .tiktok:    return "TikTok shared"
+        case .youtube:   return "Short shared"
+        }
+    }
+}
+
 @MainActor
 final class ShareState: ObservableObject {
     enum Phase { case working, saved, offline, failed, unsupported }
     @Published var phase: Phase = .working
     @Published var mapName: String?
+    @Published var platform: SharePlatform = .instagram
 }
 
-/// A toast, not a screen.
+/// A success toast, not a sheet.
 ///
-/// This was a centred card inside a full-bleed container, which reads as a
-/// modal you have to acknowledge — a lot of ceremony for "got it, it's
-/// processing". Sharing a reel should feel like the share sheet closing with a
-/// note left behind, so the confirmation is a single compact row pinned to the
-/// bottom, sized to its text, over as much of the underlying app as the system
-/// will let an extension show.
+/// Sharing a reel is a one-tap action with a one-line outcome, so the
+/// confirmation is a small rounded box floating in the middle of whatever app
+/// you shared from. It is sized to its own text rather than to the screen, and
+/// the backdrop is barely there — the point is that the app underneath is still
+/// visible and you are still in it.
 private struct ShareConfirmView: View {
     @ObservedObject var state: ShareState
 
     var body: some View {
-        VStack {
-            Spacer()
+        ZStack {
+            // Just enough to lift the box off a bright photo. Any more and it
+            // reads as a modal that has taken the screen.
+            Color.black.opacity(0.12).ignoresSafeArea()
             toast
-                .padding(.horizontal, 14)
-                .padding(.bottom, 14)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.horizontal, 40)
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: state.phase)
+        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: state.phase)
     }
 
     private var toast: some View {
-        HStack(spacing: 11) {
+        VStack(spacing: 9) {
             leading
-                .frame(width: 26, height: 26)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                if let detail {
-                    Text(detail)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+                .frame(width: 34, height: 34)
+            Text(title)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
+        // Sized to the text, with a floor so a two-word confirmation isn't a
+        // cramped little tag.
+        .frame(minWidth: 190)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.07))
         )
-        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        .shadow(color: .black.opacity(0.22), radius: 24, y: 8)
     }
 
     @ViewBuilder private var leading: some View {
         switch state.phase {
         case .working:
-            ProgressView().controlSize(.small)
+            ProgressView()
         case .saved:
             icon("checkmark.circle.fill", .green)
         case .offline:
@@ -158,10 +192,10 @@ private struct ShareConfirmView: View {
 
     private var title: String {
         switch state.phase {
-        case .working:     return "Saving to Nosh…"
-        case .saved:       return "Analyzing — pins coming up"
+        case .working:     return "Saving…"
+        case .saved:       return state.platform.sharedLabel
         case .offline:     return "Can't reach Nosh"
-        case .failed:      return "Couldn't save that reel"
+        case .failed:      return "Couldn't save that"
         case .unsupported: return "Unsupported link"
         }
     }
@@ -169,7 +203,9 @@ private struct ShareConfirmView: View {
     private var detail: String? {
         switch state.phase {
         case .working:     return nil
-        case .saved:       return state.mapName.map { "Saving to \($0)" }
+        case .saved:
+            guard let name = state.mapName else { return "Analyzing — pins coming up" }
+            return "Analyzing — pins coming to \(name)"
         case .offline:     return "Saved — it'll upload when you're back online."
         case .failed:      return "Saved to retry — open Nosh to finish."
         case .unsupported: return "Share an Instagram, TikTok, or YouTube link."
@@ -178,7 +214,7 @@ private struct ShareConfirmView: View {
 
     private func icon(_ name: String, _ color: Color) -> some View {
         Image(systemName: name)
-            .font(.system(size: 21, weight: .semibold))
+            .font(.system(size: 30, weight: .semibold))
             .foregroundStyle(color)
     }
 }
