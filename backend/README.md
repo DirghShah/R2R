@@ -97,9 +97,17 @@ Recommended: **Railway** (reads the Dockerfile, Postgres/Redis are plugins).
 Fly.io works too. Avoid free tiers that sleep — a sleeping worker stalls
 analysis mid-job.
 
-Production `.env` must set: `ENVIRONMENT=prod` (this rejects `dev:` auth
-tokens), a real `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, the vendor keys, and
-`APNS_KEY_CONTENT` (base64 of the .p8 — a *path* has no meaning on a PaaS).
+Production `.env` must set: `ENVIRONMENT=prod`, a real `JWT_SECRET`,
+`DATABASE_URL`, `REDIS_URL`, the vendor keys, and `APNS_KEY_CONTENT` (base64 of
+the .p8 — a *path* has no meaning on a PaaS).
+
+**Never set `ALLOW_DEV_SIGN_IN` on a deployed service.** It makes
+`{"identity_token": "dev:anyone"}` a valid sign-in for any account id you name,
+which is the whole authentication system bypassed. It defaults to off, so
+production is safe by doing nothing; local development and the test suite turn
+it on explicitly. It used to key off `ENVIRONMENT`, which defaults to `dev` —
+one forgotten variable on a new deploy left it wide open, and nothing about a
+healthy-looking service would have shown it.
 
 ### Cost control
 

@@ -155,3 +155,32 @@ def test_deletion_proceeds_even_if_apple_revocation_fails(client, monkeypatch):
 
     monkeypatch.setattr(apple, "revoke", lambda token: False)
     assert client.delete("/me").status_code == 204
+
+
+# --- the dev shortcut is a bypass, so prove it is off by default ----------
+
+
+def test_dev_sign_in_is_off_unless_explicitly_enabled(monkeypatch):
+    """`{"identity_token": "dev:anyone"}` mints a session for any id you name.
+
+    It used to be gated on `environment`, which defaults to "dev" — so a deploy
+    that forgot ENVIRONMENT was silently open to anyone who guessed the shape
+    of the request, and a healthy-looking service told you nothing.
+    """
+    from app import auth
+    from app.config import settings
+
+    # Otherwise the fallback path reaches for Apple's live signing keys.
+    monkeypatch.setattr(auth, "_apple_keys", lambda force_refresh=False: [])
+    monkeypatch.setattr(settings, "allow_dev_sign_in", False)
+
+    resp = TestClient(app).post("/auth/apple", json={"identity_token": "dev:intruder"})
+    assert resp.status_code == 401
+
+
+def test_the_flag_defaults_to_off(monkeypatch):
+    """The default is the whole point: an unset variable must not open it."""
+    from app.config import Settings
+
+    monkeypatch.delenv("ALLOW_DEV_SIGN_IN", raising=False)
+    assert Settings(_env_file=None).allow_dev_sign_in is False

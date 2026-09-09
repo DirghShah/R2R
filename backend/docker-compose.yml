@@ -29,6 +29,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://reelmap:reelmap@db:5432/reelmap
       REDIS_URL: redis://redis:6379/0
+      # This compose file is the local dev stack. The API defaults to refusing
+      # dev sign-in, so say so explicitly here rather than relying on a default.
+      ALLOW_DEV_SIGN_IN: "true"
     ports: ["8000:8000"]
     depends_on:
       db:

@@ -383,3 +383,28 @@ def test_deleting_an_owner_removes_the_shared_map_for_everyone(client):
     assert not any(m["id"] == trip["id"] for m in friend.get("/maps").json())
     # ...and the survivor still has their own personal map.
     assert len(friend.get("/maps").json()) == 1
+
+
+# --- input the app would never send ---------------------------------------
+
+
+def test_a_name_of_only_spaces_is_refused(client):
+    """min_length=1 accepts "   ", which the handler then strips to "".
+
+    The app trims before sending, so this only matters for anything that isn't
+    the app — but a shared map any member can rename to nothing is worth one
+    validator. An unnamed row in the switcher is unidentifiable and unsearchable.
+    """
+    assert client.post("/maps", json={"name": "   "}).status_code == 422
+
+    trip = client.post("/maps", json={"name": "Trip"}).json()
+    assert client.patch(f"/maps/{trip['id']}", json={"name": "\t \n"}).status_code == 422
+    assert client.get("/maps").json(), "the map survived the rejected rename"
+    assert next(m for m in client.get("/maps").json() if m["id"] == trip["id"])["name"] == "Trip"
+
+    assert client.patch("/me", json={"display_name": " "}).status_code == 422
+
+
+def test_surrounding_whitespace_is_trimmed_rather_than_rejected(client):
+    created = client.post("/maps", json={"name": "  Lisbon  "}).json()
+    assert created["name"] == "Lisbon"

@@ -7,8 +7,15 @@ happened to `DELETE /me`.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 from sqlalchemy import event
+
+# Every test signs in with a "dev:" token, which the API now refuses unless
+# told otherwise. Set before anything imports app.config, whose settings are
+# read once at import.
+os.environ.setdefault("ALLOW_DEV_SIGN_IN", "true")
 
 
 @pytest.fixture(scope="session", autouse=True)

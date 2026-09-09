@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     # right default, since an ops view that exists by accident is a leak.
     admin_token: str | None = None
 
+    # The dev sign-in shortcut — POST /auth/apple with {"identity_token":
+    # "dev:anyone"} — skips Apple entirely and mints a session for any id you
+    # name. It used to be gated on `environment`, which defaults to "dev": a
+    # deploy that forgot to set ENVIRONMENT was silently wide open, and nothing
+    # about a healthy-looking service would have told you. Its own flag,
+    # defaulting to off, fails closed instead.
+    allow_dev_sign_in: bool = False
+
     jwt_secret: str = "dev-only-change-me"
     jwt_algorithm: str = "HS256"
     # Short-lived access token; the refresh token carries the session.

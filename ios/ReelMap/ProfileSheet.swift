@@ -30,7 +30,7 @@ struct ProfileSheet: View {
                     identityCard
                     usageCard
                     sharedMapsCard
-                    blockedCard
+                    safetyCard
                     accountActions
                 }
                 .padding(20)
@@ -132,13 +132,23 @@ struct ProfileSheet: View {
         }
     }
 
-    /// Only rendered when there's something in it — an empty "Blocked (0)"
-    /// row is clutter for the overwhelming majority who never block anyone.
-    @ViewBuilder private var blockedCard: some View {
-        if !blocked.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Blocked").font(.display(15, .semibold)).foregroundStyle(.ink)
-                Text("You don't see the places they add, or their name in member lists.")
+    /// Always rendered, even with nothing blocked.
+    ///
+    /// It used to appear only once you had blocked someone, which meant a brand
+    /// new account — a reviewer's account — contained no evidence anywhere that
+    /// blocking exists. Guideline 1.2 asks for reporting *and* blocking, and a
+    /// feature reachable only from a shared map you haven't been invited to is
+    /// a feature nobody can find. The empty state says where blocking lives.
+    private var safetyCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Safety").font(.display(15, .semibold)).foregroundStyle(.ink)
+
+            if blocked.isEmpty {
+                Text("You haven't blocked anyone. Open any shared map, tap a member and choose Block — you'll stop seeing the places they add. You can report a map, a place or a person from the same menu.")
+                    .font(.system(size: 12.5)).foregroundStyle(.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("You don't see the places these people add. They stay listed in shared maps as blocked, so you can undo this or remove them.")
                     .font(.system(size: 12.5)).foregroundStyle(.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(blocked) { person in
@@ -154,9 +164,28 @@ struct ProfileSheet: View {
                     .padding(.vertical, 4)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16).card(20)
+
+            Rectangle().fill(Color.hairline).frame(height: 1).padding(.vertical, 2)
+
+            // A contact route that doesn't depend on there being another user
+            // on screen — the one thing an in-app report can't cover.
+            if let mail = Support.mailURL {
+                Link(destination: mail) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "envelope").font(.system(size: 13, weight: .semibold))
+                        Text("Report a problem").font(.system(size: 14, weight: .medium))
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.inkMuted)
+                    }
+                    .foregroundStyle(.linkBlue)
+                    .contentShape(Rectangle())
+                }
+                .padding(.vertical, 3)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16).card(20)
     }
 
     private var accountActions: some View {
@@ -226,5 +255,21 @@ struct ProfileSheet: View {
         } catch {
             errorText = error.localizedDescription
         }
+    }
+}
+
+
+/// Where a person goes when the in-app report flow doesn't fit — Apple asks
+/// for a working contact route, and the App Store listing's support URL is not
+/// reachable from inside the app.
+enum Support {
+    static let email = "dirghvshah@gmail.com"
+
+    static var mailURL: URL? {
+        var c = URLComponents()
+        c.scheme = "mailto"
+        c.path = email
+        c.queryItems = [URLQueryItem(name: "subject", value: "Nosh — report a problem")]
+        return c.url
     }
 }

@@ -61,9 +61,13 @@ def create_access_token(user_id: str) -> str:
 
 
 def verify_apple_identity_token(identity_token: str) -> str:
-    """Return the Apple subject (stable user id). Dev shortcut: a token of the
-    form 'dev:<sub>' is accepted only when environment=dev."""
-    if settings.environment == "dev" and identity_token.startswith("dev:"):
+    """Return the Apple subject (stable user id).
+
+    Dev shortcut: a token of the form 'dev:<sub>' names its own user and skips
+    Apple. It is a complete authentication bypass, so it is gated on
+    ALLOW_DEV_SIGN_IN, which defaults to off — see app/config.py.
+    """
+    if settings.allow_dev_sign_in and identity_token.startswith("dev:"):
         return identity_token.split(":", 1)[1]
 
     try:

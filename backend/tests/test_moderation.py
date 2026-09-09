@@ -60,15 +60,37 @@ def test_junk_target_types_and_reasons_are_rejected(client):
 # --- blocking -------------------------------------------------------------
 
 
-def test_blocking_hides_that_person_from_the_member_list(client):
+def test_blocking_flags_that_person_in_the_member_list(client):
+    """Flagged, not hidden.
+
+    Dropping them from the list also dropped the row menu that carries "Remove
+    from map", so blocking someone on your own map left you with no way to
+    remove them — the one thing an owner most likely wanted next.
+    """
     trip = client.post("/maps", json={"name": "Trip"}).json()
     code = client.post(f"/maps/{trip['id']}/invite").json()["invite_code"]
     friend = _user("dev:blockme")
     friend.post(f"/maps/join/{code}")
     friend_id = _user_id(friend)
 
-    assert len(client.get(f"/maps/{trip['id']}/members").json()) == 2
     client.post("/blocks", json={"user_id": friend_id})
+    members = client.get(f"/maps/{trip['id']}/members").json()
+
+    assert len(members) == 2, "a blocked member must stay removable"
+    blocked = next(m for m in members if m["user_id"] == friend_id)
+    assert blocked["is_blocked"] is True
+    assert all(not m["is_blocked"] for m in members if m["user_id"] != friend_id)
+
+
+def test_the_owner_can_still_remove_someone_they_blocked(client):
+    trip = client.post("/maps", json={"name": "Trip"}).json()
+    code = client.post(f"/maps/{trip['id']}/invite").json()["invite_code"]
+    friend = _user("dev:blockthenremove")
+    friend.post(f"/maps/join/{code}")
+    friend_id = _user_id(friend)
+
+    client.post("/blocks", json={"user_id": friend_id})
+    assert client.delete(f"/maps/{trip['id']}/members/{friend_id}").status_code == 204
     assert len(client.get(f"/maps/{trip['id']}/members").json()) == 1
 
 
@@ -96,10 +118,12 @@ def test_unblocking_restores_everything(client):
     friend_id = _user_id(friend)
 
     client.post("/blocks", json={"user_id": friend_id})
-    assert len(client.get(f"/maps/{trip['id']}/members").json()) == 1
+    members = client.get(f"/maps/{trip['id']}/members").json()
+    assert next(m for m in members if m["user_id"] == friend_id)["is_blocked"] is True
 
     assert client.delete(f"/blocks/{friend_id}").status_code == 204
-    assert len(client.get(f"/maps/{trip['id']}/members").json()) == 2
+    members = client.get(f"/maps/{trip['id']}/members").json()
+    assert all(not m["is_blocked"] for m in members)
 
 
 def test_blocking_does_not_remove_anyone_from_the_map(client):

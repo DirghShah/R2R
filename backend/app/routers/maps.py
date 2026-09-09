@@ -198,6 +198,10 @@ def list_members(
     db: Session = Depends(get_db),
 ) -> list[MapMemberOut]:
     require_member(db, map_id, user.id)
+    # Flagged, not filtered. Hiding a blocked member also hid the row menu that
+    # carries "Remove from map", so blocking someone on your own map left you
+    # unable to get rid of them. Blocking still hides what they *add* — that
+    # filtering lives in GET /places, which is what a block is actually for.
     hidden = blocked_ids(db, user.id)
     rows = db.execute(
         select(MapMember, User)
@@ -212,9 +216,9 @@ def list_members(
             avatar_color=u.avatar_color,
             role=mem.role,
             joined_at=mem.joined_at,
+            is_blocked=u.id in hidden,
         )
         for mem, u in rows
-        if u.id not in hidden
     ]
 
 

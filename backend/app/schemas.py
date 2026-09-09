@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SubmitReelRequest(BaseModel):
@@ -113,14 +113,35 @@ class MapOut(BaseModel):
     created_at: datetime
 
 
+def _require_visible_text(value: str | None) -> str | None:
+    """Reject names that are only whitespace.
+
+    min_length=1 happily accepts "   ", which the handlers then strip down to
+    "". A map called "" is an unlabelled row in the switcher that nobody can
+    identify or search for, and on a shared map one member can inflict it on
+    everyone. The app already trims before sending, so this is the guarantee
+    for everything that isn't the app.
+    """
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("must contain more than spaces")
+    return cleaned
+
+
 class CreateMapRequest(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     emoji: str | None = Field(default=None, max_length=8)
+
+    _clean_name = field_validator("name")(_require_visible_text)
 
 
 class UpdateMapRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=60)
     emoji: str | None = Field(default=None, max_length=8)
+
+    _clean_name = field_validator("name")(_require_visible_text)
 
 
 class MapInviteOut(BaseModel):
@@ -145,6 +166,10 @@ class MapMemberOut(BaseModel):
     avatar_color: str | None = None
     role: str
     joined_at: datetime
+    # Blocked members used to be dropped from this list entirely, which also
+    # removed the owner's only way to take them off the map — the block hid the
+    # very menu that holds "Remove from map". They stay listed and flagged.
+    is_blocked: bool = False
 
 
 class AppleAuthRequest(BaseModel):
@@ -180,6 +205,8 @@ class UserOut(BaseModel):
 
 class UpdateMeRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=60)
+
+    _clean_name = field_validator("display_name")(_require_visible_text)
 
 
 class RegisterDeviceRequest(BaseModel):

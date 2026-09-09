@@ -74,7 +74,7 @@ struct MapDetailSheet: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("You'll stop seeing the places they add and their name in member lists. They stay in the map — only the owner can remove people — and they aren't told.")
+                Text("You'll stop seeing the places they add. They stay listed here as blocked so you can undo it or remove them, they keep their access unless the owner removes them, and they aren't told.")
             }
             .confirmationDialog(removalTitle, isPresented: $confirmRemoval, titleVisibility: .visible) {
                 Button(removalVerb, role: .destructive) { Task { await removeSelf() } }
@@ -177,11 +177,17 @@ struct MapDetailSheet: View {
                 ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
                     HStack(spacing: 12) {
                         InitialAvatar(name: member.displayName, colorHex: member.avatarColor)
+                            .opacity(member.isBlocked ? 0.45 : 1)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(displayName(member)).font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(.ink).lineLimit(1)
-                            Text(member.isOwner ? "Owner" : "Can add places")
-                                .font(.system(size: 12)).foregroundStyle(.inkMuted)
+                                .opacity(member.isBlocked ? 0.5 : 1)
+                            // A blocked member reads as blocked rather than
+                            // disappearing, so the state is visible and the
+                            // way out of it is one tap away.
+                            Text(memberSubtitle(member))
+                                .font(.system(size: 12))
+                                .foregroundStyle(member.isBlocked ? Color.closedRed : .inkMuted)
                         }
                         Spacer()
                         // Anyone can report or block anyone else; only the owner
@@ -195,9 +201,15 @@ struct MapDetailSheet: View {
                                         name: member.displayName ?? "this person")
                                 } label: { Label("Report", systemImage: "flag") }
 
-                                Button(role: .destructive) {
-                                    pendingBlock = member
-                                } label: { Label("Block", systemImage: "hand.raised") }
+                                if member.isBlocked {
+                                    Button {
+                                        Task { await unblock(member) }
+                                    } label: { Label("Unblock", systemImage: "hand.raised.slash") }
+                                } else {
+                                    Button(role: .destructive) {
+                                        pendingBlock = member
+                                    } label: { Label("Block", systemImage: "hand.raised") }
+                                }
 
                                 if map.isOwner && !member.isOwner {
                                     Divider()
@@ -240,6 +252,11 @@ struct MapDetailSheet: View {
     private func displayName(_ member: MapMemberSummary) -> String {
         if member.userID == AuthStore.userID { return "You" }
         return member.displayName ?? "Someone"
+    }
+
+    private func memberSubtitle(_ member: MapMemberSummary) -> String {
+        if member.isBlocked { return "Blocked — you don't see what they add" }
+        return member.isOwner ? "Owner" : "Can add places"
     }
 
     // MARK: Leave / delete
@@ -312,8 +329,19 @@ struct MapDetailSheet: View {
         do {
             try await APIClient.shared.block(userID: member.userID)
             Haptics.success()
-            // Their row disappears from the list the server returns, and their
-            // places drop out of the next sync.
+            // Their row comes back flagged, and their places drop out of the
+            // next sync. Nothing is deleted, so unblocking restores all of it.
+            await load()
+            await store.refresh(force: true)
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func unblock(_ member: MapMemberSummary) async {
+        do {
+            try await APIClient.shared.unblock(userID: member.userID)
+            Haptics.success()
             await load()
             await store.refresh(force: true)
         } catch {

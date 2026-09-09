@@ -262,6 +262,10 @@ public struct MapMemberSummary: Codable, Identifiable, Hashable, Sendable {
     public let avatarColor: String?
     public let role: String
     public let joinedAt: Date
+    /// Blocked members stay in the list rather than vanishing from it. Hiding
+    /// them also hid the menu holding "Remove from map", so blocking someone
+    /// on your own map left you unable to remove them.
+    public let isBlocked: Bool
 
     public var isOwner: Bool { role == "owner" }
 
@@ -271,6 +275,20 @@ public struct MapMemberSummary: Codable, Identifiable, Hashable, Sendable {
         case displayName = "display_name"
         case avatarColor = "avatar_color"
         case joinedAt = "joined_at"
+        case isBlocked = "is_blocked"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        userID = try c.decode(String.self, forKey: .userID)
+        displayName = try c.decodeIfPresent(String.self, forKey: .displayName)
+        avatarColor = try c.decodeIfPresent(String.self, forKey: .avatarColor)
+        role = try c.decode(String.self, forKey: .role)
+        joinedAt = try c.decode(Date.self, forKey: .joinedAt)
+        // Absent from a backend older than this field. Defaulting to false is
+        // the safe read: it shows the member normally rather than labelling
+        // someone blocked who isn't.
+        isBlocked = try c.decodeIfPresent(Bool.self, forKey: .isBlocked) ?? false
     }
 }
 
