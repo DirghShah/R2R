@@ -148,6 +148,10 @@ class ReelSource(Base):
     # stuck reel from one that is legitimately still working.
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What this analysis cost, in USD. Previously only printed to the logs,
+    # which meant the only way to answer "what am I spending" was to grep a log
+    # stream that rotates. A column makes it a query.
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class City(Base):

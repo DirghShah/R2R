@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # --- Auth ---
+    # Guards GET /admin/stats. Unset means the endpoint 404s — which is the
+    # right default, since an ops view that exists by accident is a leak.
+    admin_token: str | None = None
+
     jwt_secret: str = "dev-only-change-me"
     jwt_algorithm: str = "HS256"
     # Short-lived access token; the refresh token carries the session.

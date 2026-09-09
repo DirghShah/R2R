@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.routers import admin as admin_router
 from app.routers import auth as auth_router
 from app.routers import links as links_router
 from app.routers import maps as maps_router
@@ -36,6 +37,7 @@ app.include_router(links_router.router)
 app.include_router(reels_router.router)
 app.include_router(places_router.router)
 app.include_router(moderation_router.router)
+app.include_router(admin_router.router)
 
 
 @app.on_event("startup")

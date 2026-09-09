@@ -28,7 +28,16 @@ class UnsupportedReel(Exception):
     pipeline, and telling the user "couldn't analyze that reel" would send them
     off retrying something that will never work. Its message is written to be
     shown to the user verbatim.
+
+    Carries the token counts because a rejected reel still cost a fetch and a
+    Claude call — the whole point of rejecting early is that it costs *less*,
+    not nothing, and that saving is only visible if both are recorded.
     """
+
+    def __init__(self, message: str, input_tokens: int = 0, output_tokens: int = 0) -> None:
+        super().__init__(message)
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
 
 
 # Keyed by `reel_kind` from the extractor. Written as user-facing copy: these
@@ -60,6 +69,15 @@ _CLAUDE_PRICES = {
 def _claude_cost(model: str, in_tokens: int, out_tokens: int) -> float:
     p_in, p_out = _CLAUDE_PRICES.get(model, _CLAUDE_PRICES["claude-opus-4-8"])
     return in_tokens / 1_000_000 * p_in + out_tokens / 1_000_000 * p_out
+
+
+def _total_cost(places: int, in_tok: int, out_tok: int) -> float:
+    """One place that knows what a run costs, used by both the log line and the
+    stored column so they can't drift apart."""
+    claude = _claude_cost(settings.anthropic_model, in_tok, out_tok)
+    apify = settings.apify_cost_per_reel if settings.reel_fetcher == "apify" else 0.0
+    geo = 0.0 if settings.geocoder == "nominatim" else settings.google_cost_per_place * places
+    return round(claude + apify + geo, 4)
 
 
 def _log_metrics(reel: ReelSource, count: int, seconds: float,
@@ -119,6 +137,7 @@ def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
             count, in_tok, out_tok = _run_analysis(db, reel, user_id, target_map)
             reel.status = "done"
             reel.analyzed_at = datetime.now(timezone.utc)
+            reel.cost_usd = _total_cost(count, in_tok, out_tok)
             db.commit()
         except UnsupportedReel as exc:
             # Not a failure: the analysis worked and the answer was "there's
@@ -128,6 +147,9 @@ def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
             reel.status = "unsupported"
             reel.error = str(exc)[:500]
             reel.analyzed_at = datetime.now(timezone.utc)
+            # No geocoding happened — that's the saving, and recording zero
+            # places is what makes it measurable.
+            reel.cost_usd = _total_cost(0, exc.input_tokens, exc.output_tokens)
             db.commit()
             print(f"[metrics] analyze SKIPPED reel={reel.canonical_id} reason={reel.error}", flush=True)
             _notify(user_id, 0, reel)
@@ -192,7 +214,9 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int,
     # of the marginal cost) hasn't been touched yet.
     kind = (result.extraction.reel_kind or "venue_recommendation").strip().lower()
     if kind != "venue_recommendation":
-        raise UnsupportedReel(_UNSUPPORTED_REASONS.get(kind, _UNSUPPORTED_REASONS["not_places"]))
+        raise UnsupportedReel(
+            _UNSUPPORTED_REASONS.get(kind, _UNSUPPORTED_REASONS["not_places"]),
+            result.input_tokens, result.output_tokens)
 
     # Drop places the model saw on-screen but couldn't name ("<UNKNOWN>") — they
     # can't be pinned or looked up and only render as garbage in the app.
@@ -213,8 +237,8 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int,
 
     if not places:
         raise UnsupportedReel(
-            "We couldn't find any restaurants or cafés in that reel."
-        )
+            "We couldn't find any restaurants or cafés in that reel.",
+            result.input_tokens, result.output_tokens)
 
     # A precise platform address describes the reel's single tagged venue — only
     # trust it to pin when the reel is about one place (not a "10 cafes" list).
