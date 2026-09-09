@@ -26,9 +26,11 @@ settings:
     # The deployed backend. Works from anywhere — cellular, other Wi-Fi, a
     # friend's phone — which LAN addresses never did.
     API_BASE_URL: "https://r2r-production-727a.up.railway.app"
-    # Host for Universal Links (invite links). Must match API_BASE_URL's host
-    # and serve /.well-known/apple-app-site-association, which the backend does.
-    APP_LINK_DOMAIN: "r2r-production-727a.up.railway.app"
+    # Host for Universal Links (invite links). No longer the API's host: the
+    # marketing site is the public face, and Vercel proxies /join/* and
+    # /.well-known/apple-app-site-association through to Railway, so the file
+    # is served from this origin with no redirect — which is what iOS requires.
+    APP_LINK_DOMAIN: "noshmap.app"
 
 targets:
   ReelMap:
@@ -64,8 +66,12 @@ targets:
         # binary, ASAuthorizationController fails with AuthorizationError 1000
         # ("unknown"), which says nothing about the actual cause.
         com.apple.developer.applesignin: ["Default"]
-        # Invite links open the app instead of Safari.
-        com.apple.developer.associated-domains: ["applinks:$(APP_LINK_DOMAIN)"]
+        # Invite links open the app instead of Safari. Both hosts are listed:
+        # the apex is canonical, but a link someone typed or a client rewrote
+        # with www. should still open the app rather than bouncing to Safari.
+        com.apple.developer.associated-domains:
+          - "applinks:$(APP_LINK_DOMAIN)"
+          - "applinks:www.$(APP_LINK_DOMAIN)"
         # Push ("your pins are ready"). Requires the paid Developer Program —
         # on a free personal team signing fails with "Push Notifications is not
         # available". Delete this line to build without it; the app still works,
@@ -84,9 +90,9 @@ targets:
         CFBundleDisplayName: Nosh
         API_BASE_URL: $(API_BASE_URL)
         UILaunchScreen: {}
-        # Shown in the "Allow ReelMap to use your location?" prompt — required or
+        # Shown in the "Allow Nosh to use your location?" prompt — required or
         # the map's blue-dot / center-on-me feature silently does nothing.
-        NSLocationWhenInUseUsageDescription: "ReelMap centers the map on your location so you can see saved spots near you."
+        NSLocationWhenInUseUsageDescription: "Nosh centers the map on your location so you can see saved spots near you."
 
 
   ShareExtension:

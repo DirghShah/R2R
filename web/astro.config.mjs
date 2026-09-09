@@ -2,10 +2,11 @@
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
 
-// `site` feeds canonical URLs and the sitemap. Update it — and the Sitemap line
-// in public/robots.txt — when a custom domain replaces the Vercel subdomain.
+// `site` feeds canonical URLs and the sitemap. The apex is canonical, not www —
+// keep this in sync with the primary domain set in Vercel, and with the Sitemap
+// line in public/robots.txt.
 export default defineConfig({
-  site: 'https://nosh-zeta.vercel.app',
+  site: 'https://noshmap.app',
   integrations: [sitemap()],
   build: { inlineStylesheets: 'auto' },
 });

@@ -388,7 +388,7 @@ public actor APIClient {
             throw APIError(status: -1, message: Self.networkMessage(e.code))
         }
         guard let http = resp as? HTTPURLResponse else {
-            throw APIError(status: -1, message: "No response from ReelMap.")
+            throw APIError(status: -1, message: "No response from Nosh.")
         }
         // An expired access token is recoverable without the user: swap the
         // refresh token for a new one and retry once. This is what lets the
@@ -434,11 +434,11 @@ public actor APIClient {
     private static func networkMessage(_ code: URLError.Code) -> String {
         switch code {
         case .notConnectedToInternet: return "You're offline."
-        case .networkConnectionLost:  return "Network lost — can't reach the ReelMap backend."
-        case .timedOut:               return "ReelMap didn't respond. Is the backend running on the same Wi-Fi?"
+        case .networkConnectionLost:  return "Network lost — can't reach Nosh."
+        case .timedOut:               return "Nosh didn't respond. Check your connection and try again."
         case .cannotConnectToHost, .cannotFindHost:
-            return "Can't reach the ReelMap backend at this address."
-        default:                      return "Network error — can't reach ReelMap."
+            return "Can't reach Nosh right now."
+        default:                      return "Network error — can't reach Nosh."
         }
     }
 }

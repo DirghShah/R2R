@@ -45,17 +45,22 @@ Then on a device: create an invite in the app, send yourself the link, tap it.
 It must open the app, not Safari. **Delete and reinstall first** — iOS caches
 that file per install and won't re-fetch it.
 
-## Switching to a real domain
+## The domain
 
-Four places, all of which must agree:
+`noshmap.app` — the apex is canonical, `www` redirects to it. Four places have
+to agree, and all four are set:
 
 1. `astro.config.mjs` → `site`
 2. `public/robots.txt` → the `Sitemap:` line
-3. Railway, both services → `PUBLIC_BASE_URL` (this builds the invite URL)
-4. `ios/project.yml` → `APP_LINK_DOMAIN`, then rebuild the app
+3. Railway, **both** services → `PUBLIC_BASE_URL` (this builds the invite URL)
+4. `ios/project.yml` → `APP_LINK_DOMAIN`
 
-After step 4, everyone must delete and reinstall to pick up the new
-`apple-app-site-association`.
+The app's entitlement lists both `noshmap.app` and `www.noshmap.app`, so a link
+either way opens the app rather than bouncing to Safari.
+
+If the domain ever changes again: after step 4 everyone must delete and
+reinstall, because iOS caches `apple-app-site-association` per install and will
+not re-fetch it.
 
 ## Screenshots
 

@@ -74,7 +74,7 @@ def join_landing(code: str, db: Session = Depends(get_db)) -> HTMLResponse:
     people = member_count(db, m.id)
     title = f"{html.escape(m.emoji or '📍')} {html.escape(m.name)}"
     body = (
-        f"{html.escape(who)} shared a ReelMap with you — "
+        f"{html.escape(who)} shared a Nosh map with you — "
         f"{people} {'person' if people == 1 else 'people'} so far."
     )
     return HTMLResponse(_page(title, body, show_store=True))
@@ -82,7 +82,7 @@ def join_landing(code: str, db: Session = Depends(get_db)) -> HTMLResponse:
 
 def _page(title: str, body: str, show_store: bool = False) -> str:
     store = (
-        f'<a class="cta" href="{settings.app_store_url}">Get ReelMap</a>'
+        f'<a class="cta" href="{settings.app_store_url}">Get Nosh</a>'
         '<p class="hint">Already have it? Open this link on your iPhone.</p>'
         if show_store and settings.app_store_url
         else ""
@@ -91,7 +91,7 @@ def _page(title: str, body: str, show_store: bool = False) -> str:
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} · ReelMap</title>
+<title>{title} · Nosh</title>
 <style>
   :root {{ color-scheme: light dark; }}
   body {{ margin:0; min-height:100vh; display:grid; place-items:center;

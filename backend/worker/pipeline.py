@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 class UnsupportedReel(Exception):
-    """The reel analysed fine — it just isn't something ReelMap can pin.
+    """The reel analysed fine — it just isn't something Nosh can pin.
 
     Distinct from a failure on purpose. A meal-kit ad isn't a bug in the
     pipeline, and telling the user "couldn't analyze that reel" would send them
@@ -444,7 +444,7 @@ def _notify(user_id: str, count: int, reel: ReelSource) -> None:
         body = reel.error or "That reel doesn't have a place we can save."
     elif reel.status == "failed":
         title = "Couldn't analyze that reel"
-        body = "Open ReelMap to try it again."
+        body = "Open Nosh to try it again."
     else:
         title = "No places in that reel"
         body = "We couldn't find any venues to save from it."

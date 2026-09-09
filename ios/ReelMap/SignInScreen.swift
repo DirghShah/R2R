@@ -56,7 +56,7 @@ struct SignInScreen: View {
                     .foregroundStyle(.appAccent)
             }
             VStack(spacing: 8) {
-                Text("ReelMap").font(.display(34, .bold)).foregroundStyle(.ink)
+                Text("Nosh").font(.display(34, .bold)).foregroundStyle(.ink)
                 Text("Share a reel. Get the pin.")
                     .font(.system(size: 17)).foregroundStyle(.inkSecondary)
             }
@@ -160,7 +160,7 @@ struct SignInScreen: View {
                     print("[signin] backend rejected: status=\(apiError.status) \(apiError.message)")
                     errorText = apiError.isNetwork
                         ? "\(apiError.message)\n\nApple signed you in, but ReelMap's server couldn't be reached."
-                        : "ReelMap's server rejected the sign-in.\n\n\(apiError.message)"
+                        : "Nosh's server rejected the sign-in.\n\n\(apiError.message)"
                 } catch {
                     print("[signin] unexpected failure: \(error)")
                     errorText = "Signed in with Apple, but something went wrong afterwards.\n\n\(error.localizedDescription)"

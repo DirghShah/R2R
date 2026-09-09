@@ -91,7 +91,7 @@ private struct ShareConfirmView: View {
             switch state.phase {
             case .working:
                 ProgressView()
-                Text("Saving to ReelMap…").font(.headline)
+                Text("Saving to Nosh…").font(.headline)
             case .saved:
                 icon("checkmark.circle.fill", .green)
                 Text("Analyzing — pins coming up").font(.headline)
@@ -101,13 +101,13 @@ private struct ShareConfirmView: View {
                 }
             case .offline:
                 icon("wifi.slash", .orange)
-                Text("Can't reach ReelMap").font(.headline)
+                Text("Can't reach Nosh").font(.headline)
                 Text("Network lost. Saved — it'll upload when your phone can reach the backend again.")
                     .font(.subheadline).foregroundStyle(.secondary)
             case .failed:
                 icon("exclamationmark.triangle.fill", .orange)
                 Text("Couldn't save that reel").font(.headline)
-                Text("Saved to retry — open ReelMap once the backend is reachable.")
+                Text("Saved to retry — open Nosh once you're back online.")
                     .font(.subheadline).foregroundStyle(.secondary)
             case .unsupported:
                 icon("link.badge.plus", .orange)

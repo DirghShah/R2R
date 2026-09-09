@@ -136,8 +136,8 @@ struct MapDetailSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let invite {
-                    ShareLink(item: URL(string: invite.inviteURL) ?? URL(string: "https://reelmap.app")!,
-                              message: Text("Join my ReelMap: \(displayedName)")) {
+                    ShareLink(item: URL(string: invite.inviteURL) ?? URL(string: "https://noshmap.app")!,
+                              message: Text("Join my Nosh map: \(displayedName)")) {
                         Label("Share invite link", systemImage: "square.and.arrow.up")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)

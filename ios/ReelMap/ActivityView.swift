@@ -16,7 +16,7 @@ struct ActivityView: View {
                     ContentUnavailableView {
                         Label("Nothing here yet", systemImage: "square.stack.3d.up")
                     } description: {
-                        Text("Share a reel to ReelMap or paste a link — it'll show up here while it analyzes.")
+                        Text("Share a reel to Nosh or paste a link — it'll show up here while it analyzes.")
                     }
                 } else {
                     List {
