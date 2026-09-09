@@ -142,3 +142,38 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yourco.reelmap.SharedKit
         GENERATE_INFOPLIST_FILE: YES
+
+# The scheme, declared here rather than left to Xcode ------------------------
+#
+# Nothing in this file used to define a scheme, so the only schemes that ever
+# existed were the ones Xcode autocreates on open. Those live in
+# ReelMap.xcodeproj/xcuserdata/, and `xcodegen generate` replaces the whole
+# .xcodeproj bundle — so every regeneration deleted them, and Xcode re-created
+# them inconsistently, which is why the app scheme kept going missing from
+# Product > Scheme > Manage Schemes right when it was needed for an archive.
+#
+# Declared here it is written into xcshareddata by XcodeGen, survives every
+# regeneration, and is the same for anyone who clones the repo.
+#
+# Named "Nosh" because everything the user sees already is; the target keeps
+# the name ReelMap, which only appears in Xcode and in file paths. Renaming the
+# target would mean renaming source folders and bundle identifiers, which is a
+# much larger change for no visible gain.
+schemes:
+  Nosh:
+    build:
+      targets:
+        ReelMap: all
+      parallelizeBuild: true
+      buildImplicitDependencies: true
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+      revealArchiveInOrganizer: true
