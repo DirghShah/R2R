@@ -111,3 +111,34 @@ Two guards, both on by default:
 - `FREE_MONTHLY_REEL_LIMIT` (default 50) caps the monthly liability per user.
 - `RATE_LIMIT_REELS_PER_HOUR` (default 20) caps bursts. Backed by Redis so it
   holds across replicas, and fails **open** if Redis is down.
+
+
+## Starting from a clean state
+
+`scripts/reset_data.py` deletes every row and keeps the schema. Irreversible,
+and it deletes *everyone's* data, not just yours.
+
+```bash
+python -m scripts.reset_data          # dry run — prints what would go
+python -m scripts.reset_data --yes    # dev
+python -m scripts.reset_data --yes --i-understand-this-is-production
+```
+
+Against Railway, run it through the CLI so it uses the deployed database:
+
+```bash
+npm i -g @railway/cli && railway login
+railway link                          # pick the project, then the R2R service
+railway run python -m scripts.reset_data          # dry run first
+railway run python -m scripts.reset_data --yes --i-understand-this-is-production
+```
+
+**What it costs.** Deleting `reel_sources` drops the shared analysis cache. A
+reel that was already analysed is normally free to re-add; afterwards every
+reel is a fresh paid run (~$0.27 with 5 places, most of it Google Places).
+
+**Afterwards.** Every device is signed in as a user that no longer exists, so
+the app 401s, fails to refresh and shows the sign-in screen. Signing in with
+the same Apple ID creates a fresh account and a new personal map — Apple
+returns the same subject id, so nothing needs reinstalling. The local SwiftData
+cache self-heals on the next sync.
