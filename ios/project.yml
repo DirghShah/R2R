@@ -15,12 +15,13 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: "98B96Q5HQP"
-    # Only SharedKit (GENERATE_INFOPLIST_FILE: YES, no file on disk) needed
-    # this — ReelMap and ShareExtension have real Info.plist files with these
-    # keys already baked in — but Xcode only populates a *generated* plist's
-    # CFBundleShortVersionString/CFBundleVersion when these build settings are
-    # set, and they weren't, anywhere. That's what App Store Connect rejected
-    # the upload for (code 90057, SharedKit.framework specifically).
+    # Every Info.plist here is generated, so none of them carry a version of
+    # their own — Xcode fills CFBundleShortVersionString/CFBundleVersion from
+    # these two settings. Unset, SharedKit.framework shipped without them and
+    # App Store Connect rejected the upload (code 90057).
+    #
+    # Bump CURRENT_PROJECT_VERSION for every upload: App Store Connect refuses
+    # a version+build pair it has already seen.
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "5"
     # The deployed backend. Works from anywhere — cellular, other Wi-Fi, a
@@ -77,12 +78,13 @@ targets:
         # available". Delete this line to build without it; the app still works,
         # you just have to open it to see new pins.
         #
-        # Stays "development" here because that's what `Run`-to-device (what
-        # you use for day-to-day testing) needs. TestFlight/App Store archives
-        # require "production" instead — Apple rejects a "development"-entitled
-        # upload — so flip this one line to "production" and re-run
-        # `xcodegen generate` right before you Archive, then flip it back
-        # afterwards so local Run builds keep working. See ios/README.md.
+        # Flips between two values and is committed either way, so check it
+        # before you build: "production" for a TestFlight or App Store archive,
+        # because Apple rejects a development-entitled upload; "development"
+        # for Run-to-device, which is what day-to-day testing uses.
+        #
+        # Currently set for an archive. Put it back to development, re-run
+        # `xcodegen generate`, and commit once the upload is away.
         aps-environment: production
     info:
       path: ReelMap/Info.plist
