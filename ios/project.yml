@@ -22,7 +22,7 @@ settings:
     # set, and they weren't, anywhere. That's what App Store Connect rejected
     # the upload for (code 90057, SharedKit.framework specifically).
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "4"
+    CURRENT_PROJECT_VERSION: "5"
     # The deployed backend. Works from anywhere — cellular, other Wi-Fi, a
     # friend's phone — which LAN addresses never did.
     API_BASE_URL: "https://r2r-production-727a.up.railway.app"
@@ -83,7 +83,7 @@ targets:
         # upload — so flip this one line to "production" and re-run
         # `xcodegen generate` right before you Archive, then flip it back
         # afterwards so local Run builds keep working. See ios/README.md.
-        aps-environment: development
+        aps-environment: production
     info:
       path: ReelMap/Info.plist
       properties:
@@ -93,6 +93,13 @@ targets:
         # Shown in the "Allow Nosh to use your location?" prompt — required or
         # the map's blue-dot / center-on-me feature silently does nothing.
         NSLocationWhenInUseUsageDescription: "Nosh centers the map on your location so you can see saved spots near you."
+        # canOpenURL returns false for undeclared third-party schemes, which
+        # would silently downgrade every deep link to its web fallback. These
+        # were in the checked-in Info.plist but not here, so every `xcodegen
+        # generate` quietly dropped them.
+        LSApplicationQueriesSchemes: [instagram, comgooglemaps]
+        # No landscape layout exists anywhere in the app.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
 
 
   ShareExtension:
