@@ -45,7 +45,7 @@ def submit_reel(
     # --- Known reel: reuse the stored analysis, never pay for it twice --------
     if reel is not None:
         _record_submission(db, user.id, reel.id)
-        saved = _place_count(db, user.id, reel.id)
+        saved = _places_on_map(db, map_id, reel.id)
 
         # Still in flight — don't enqueue a second job for the same reel.
         #
@@ -146,11 +146,21 @@ def _record_submission(db: Session, user_id: str, reel_id: str) -> None:
         db.add(UserReel(user_id=user_id, reel_source_id=reel_id))
 
 
-def _place_count(db: Session, user_id: str, reel_id: str) -> int:
-    """How many of the user's saved places came from this reel — counting the
-    ones deduped onto an earlier pin, which record the reel in `sources`."""
+def _places_on_map(db: Session, map_id: str, reel_id: str) -> int:
+    """How many places from this reel are already on *this map*.
+
+    Map-scoped, not user-scoped, and that distinction is the whole point. The
+    question POST /reels needs answered is "would re-sharing add anything
+    here", and a place you already saved to a *different* map is not an answer
+    to it. Counting per-user meant sharing a known reel into a second map found
+    the first map's pin, decided there was nothing to do, and silently added
+    nothing — while telling you its places were "on your map".
+
+    Not filtered by user either: on a shared map, a place a friend added from
+    this reel is already there, so re-sharing genuinely has nothing to add.
+    """
     rows = db.execute(
-        select(UserPlace.reel_source_id, UserPlace.sources).where(UserPlace.user_id == user_id)
+        select(UserPlace.reel_source_id, UserPlace.sources).where(UserPlace.map_id == map_id)
     ).all()
     return sum(
         1 for source_id, sources in rows
@@ -218,6 +228,22 @@ def reel_status(
         status=reel.status,
         place_count=_place_count(db, user.id, reel.id),
         error=reel.error,
+    )
+
+
+def _place_count(db: Session, user_id: str, reel_id: str) -> int:
+    """How many places this reel gave *this user*, across every map they're in.
+
+    Distinct from _places_on_map: the status endpoint doesn't know which map a
+    reel was submitted to, and "this reel produced 3 places for you" is the
+    honest answer there.
+    """
+    rows = db.execute(
+        select(UserPlace.reel_source_id, UserPlace.sources).where(UserPlace.user_id == user_id)
+    ).all()
+    return sum(
+        1 for source_id, sources in rows
+        if source_id == reel_id or reel_id in (sources or [])
     )
 
 
