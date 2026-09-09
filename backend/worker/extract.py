@@ -22,6 +22,96 @@ from app.config import settings
 
 CATEGORIES = "cafe | restaurant | hotel | bar | club | sight | event | other"
 
+# A closed list, not free text.
+#
+# Left open, the model produced "bakery", "patisserie", "café" and "rotisserie"
+# for what a user experiences as two or three things — which made the map's
+# filter chips useless and the pin colours arbitrary.
+#
+# The list deliberately mixes two axes (origin: Italian, Thai; format: Pizza,
+# Sushi, Bakery) because that is how people actually search for food, and how
+# Yelp and Google organise it. The cost of mixing them is ambiguity — a sushi
+# restaurant is both Japanese and Sushi — so PRECEDENCE is stated explicitly in
+# the prompt rather than left to the model's judgement.
+CUISINES = [
+    # Origin
+    "American", "Italian", "French", "Mexican", "Latin American", "Caribbean",
+    "Chinese", "Japanese", "Korean", "Indian", "Thai", "Vietnamese",
+    "Mediterranean", "Middle Eastern", "Greek", "Spanish", "African",
+    # Broad fallbacks — only when nothing above fits
+    "Southeast Asian", "Asian Fusion", "European",
+    # Format, which wins over origin when it is the reason people go
+    "Seafood", "Steakhouse", "Sushi", "Pizza", "BBQ", "Burgers",
+    "Vegetarian / Vegan", "Deli / Sandwich",
+    # Drink and sweet led
+    "Cafe / Coffee", "Bakery", "Dessert", "Juice / Smoothie", "Tea / Boba",
+    "Bar", "Nightclub / Lounge",
+    # Venue shape
+    "Food Hall / Market", "Street Food / Food Truck",
+    "Other",
+]
+
+
+# Legacy and near-miss labels the model produced before the list was closed, or
+# still produces occasionally. Mapping them is cheaper than re-analysing every
+# reel, and keeps old pins coloured correctly.
+_CUISINE_ALIASES = {
+    "cafe": "Cafe / Coffee", "café": "Cafe / Coffee", "coffee": "Cafe / Coffee",
+    "coffee shop": "Cafe / Coffee", "espresso": "Cafe / Coffee",
+    "patisserie": "Bakery", "pastry": "Bakery", "bakery / pastry": "Bakery",
+    "ice cream": "Dessert", "gelato": "Dessert", "desserts": "Dessert",
+    "boba": "Tea / Boba", "bubble tea": "Tea / Boba", "tea": "Tea / Boba",
+    "smoothie": "Juice / Smoothie", "juice": "Juice / Smoothie",
+    "cocktail bar": "Bar", "wine bar": "Bar", "brewery": "Bar", "pub": "Bar",
+    "speakeasy": "Bar", "nightclub": "Nightclub / Lounge",
+    "club": "Nightclub / Lounge", "lounge": "Nightclub / Lounge",
+    "ramen": "Japanese", "izakaya": "Japanese", "yakitori": "Japanese",
+    "taco": "Mexican", "tacos": "Mexican", "taqueria": "Mexican",
+    "vegan": "Vegetarian / Vegan", "vegetarian": "Vegetarian / Vegan",
+    "plant-based": "Vegetarian / Vegan",
+    "deli": "Deli / Sandwich", "sandwiches": "Deli / Sandwich",
+    "sandwich": "Deli / Sandwich", "bagels": "Deli / Sandwich",
+    "food truck": "Street Food / Food Truck", "street food": "Street Food / Food Truck",
+    "market": "Food Hall / Market", "food hall": "Food Hall / Market",
+    "rotisserie": "American", "diner": "American", "brunch": "American",
+    "breakfast": "American", "southern": "American", "soul food": "American",
+    "asian": "Asian Fusion", "latin": "Latin American", "halal": "Middle Eastern",
+    "turkish": "Middle Eastern", "lebanese": "Middle Eastern",
+    "peruvian": "Latin American", "brazilian": "Latin American",
+    "filipino": "Southeast Asian", "malaysian": "Southeast Asian",
+    "indonesian": "Southeast Asian", "german": "European", "british": "European",
+    "portuguese": "European", "ethiopian": "African", "moroccan": "African",
+}
+
+_CUISINE_BY_KEY = {c.lower(): c for c in CUISINES}
+
+
+def normalize_cuisine(value: str | None) -> str | None:
+    """Snap a label onto the closed list, or return "Other".
+
+    The tool schema asks for one of these verbatim, but non-strict tool use does
+    not enforce it — so this is the actual guarantee. Without it a single
+    off-list string becomes its own filter chip with a hash-derived colour.
+    """
+    if not value:
+        return None
+    key = value.strip().lower()
+    if not key:
+        return None
+    if key in _CUISINE_BY_KEY:
+        return _CUISINE_BY_KEY[key]
+    if key in _CUISINE_ALIASES:
+        return _CUISINE_ALIASES[key]
+    # "Italian Restaurant", "Authentic Thai" — take the first list entry the
+    # string mentions, longest first so "Latin American" beats "American".
+    for canonical in sorted(CUISINES, key=len, reverse=True):
+        if canonical.lower() in key:
+            return canonical
+    for alias, canonical in _CUISINE_ALIASES.items():
+        if alias in key:
+            return canonical
+    return "Other"
+
 
 class ExtractedPlace(BaseModel):
     name: str = Field(
@@ -31,10 +121,12 @@ class ExtractedPlace(BaseModel):
     category: str = Field(description=CATEGORIES)
     cuisine: str | None = Field(
         default=None,
-        description="Short cuisine or venue-type label for filtering & display, Title Case. "
-                    "For food: e.g. 'Italian', 'Japanese', 'Mexican', 'Thai', 'Greek', 'Seafood', "
-                    "'Café', 'Bakery', 'Cocktail Bar', 'Wine Bar', 'Nightclub'. "
-                    "For non-food places (hotels, sights) leave null.",
+        description=(
+            "EXACTLY ONE label from this list, copied verbatim including spaces "
+            "and slashes: " + " | ".join(CUISINES) + ". "
+            "Never invent a label and never combine two. If nothing fits, use "
+            "'Other'. See the precedence rule in the system prompt."
+        ),
     )
     city: str | None = Field(default=None, description="City, inferred from all signals")
     country: str | None = Field(default=None, description="Country, inferred from all signals")
@@ -188,6 +280,28 @@ The caption often has the richest tip content ("fuel your jet lag", "buy a book 
 - **Confidence**: places named in a numbered caption list with an @handle are ≥ 0.9. \
 Partially-seen or ambiguous places may be lower. Keep low-confidence places — mark them, don't drop them.
 - **Do NOT invent addresses** — leave `address_hint` null unless literal address text is present.
+
+## Cuisine — one label, from the list, verbatim
+
+`cuisine` must be EXACTLY one string from the allowed list. Copy it character for
+character, including spaces and slashes ("Cafe / Coffee", not "Cafe" or "coffee").
+Never invent a label, never combine two, never leave it null for a food place.
+
+**Precedence, when a place fits more than one — apply in order:**
+
+1. **Format wins when it is the reason people go.** A sushi restaurant is
+   `Sushi`, not `Japanese`. A pizzeria is `Pizza`, not `Italian`. A BBQ joint is
+   `BBQ`, not `American`. A steakhouse is `Steakhouse`. A burger place is
+   `Burgers`. A place known for seafood is `Seafood`.
+2. **Otherwise use the origin.** A broad Italian trattoria is `Italian`. A
+   Korean restaurant serving many dishes is `Korean`.
+3. **Drink- or sweet-led beats the food origin.** A French patisserie is
+   `Bakery`. An Italian gelateria is `Dessert`. A Vietnamese coffee shop is
+   `Cafe / Coffee`. A boba shop is `Tea / Boba`.
+4. **`Southeast Asian`, `Asian Fusion` and `European` are last resorts.** Use
+   them only when no specific country or format above fits — never for a place
+   that is clearly Thai, Vietnamese, Italian or French.
+5. **`Other` when nothing fits at all.** Better than a wrong label.
 
 Pick the single best `category` per place from: %s.""" % CATEGORIES
 

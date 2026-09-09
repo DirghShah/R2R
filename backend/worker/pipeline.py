@@ -226,6 +226,13 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int,
         log.info("reel %s: dropped %d un-nameable place(s)",
                  reel.canonical_id, len(all_places) - len(places))
 
+    # Coerce the cuisine onto the closed list. The extractor is asked for one
+    # of these verbatim, but tool-use schemas are advisory rather than enforced,
+    # so an off-list label would otherwise flow straight through to the map's
+    # filter chips and pin colours — which is the mess this replaced.
+    for ep in places:
+        ep.cuisine = extract.normalize_cuisine(ep.cuisine)
+
     # Category filter. Done per-place rather than per-reel on purpose: a "best of
     # Dallas" reel with five cafes and one hotel should still save the cafes.
     allowed = settings.allowed_categories
