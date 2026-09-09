@@ -167,3 +167,31 @@ def test_a_reel_abandoned_by_a_dead_worker_is_re_queued(client):
         assert db.get(ReelSource, reel_id).started_at is None, "the stale marker is cleared"
     finally:
         db.close()
+
+
+# --- account deletion with moderation rows -------------------------------
+
+
+def test_deleting_an_account_that_filed_a_report_works(client):
+    """Report.reporter_id is a foreign key to users. Miss it in the phased
+    delete and DELETE /me fails the constraint — the exact class of bug that
+    500'd in production once already."""
+    trip = client.post("/maps", json={"name": "Trip"}).json()
+    client.post("/reports", json={
+        "target_type": "map", "target_id": trip["id"], "reason": "spam"})
+    assert client.delete("/me").status_code == 204
+
+
+def test_deleting_an_account_that_blocked_someone_works(client):
+    friend = _user("dev:blocked-by-leaver")
+    client.post("/blocks", json={"user_id": _user_id(friend)})
+    assert client.delete("/me").status_code == 204
+
+
+def test_deleting_an_account_someone_else_blocked_works(client):
+    """The nastier direction. A block *by* another person points at this user
+    through blocked_user_id, so their deletion fails a foreign key for a reason
+    they could never have known about."""
+    stranger = _user("dev:the-blocker")
+    stranger.post("/blocks", json={"user_id": _first_user()})
+    assert client.delete("/me").status_code == 204

@@ -18,11 +18,13 @@ from app.auth import (
 )
 from app.db import get_db
 from app.models import (
+    Block,
     Collection,
     Device,
     Map,
     MapMember,
     RefreshToken,
+    Report,
     User,
     UserPlace,
     UserReel,
@@ -178,6 +180,23 @@ def delete_account(
     for model in (UserReel, Collection, Device, RefreshToken):
         for row in db.scalars(select(model).where(model.user_id == user_id)):
             db.delete(row)
+
+    # Reports they filed. Reports *about* them are left: target_id is a plain
+    # string with no foreign key, so nothing breaks, and a moderation record
+    # that vanishes when its subject deletes their account is not much of a
+    # record.
+    for row in db.scalars(select(Report).where(Report.reporter_id == user_id)):
+        db.delete(row)
+
+    # Blocks in BOTH directions. A block *by* someone else still points at this
+    # user through blocked_user_id — miss that and deleting the account fails a
+    # foreign key for a reason the user could never have known about.
+    for row in db.scalars(
+        select(Block).where(
+            (Block.user_id == user_id) | (Block.blocked_user_id == user_id)
+        )
+    ):
+        db.delete(row)
     db.flush()
 
     # 5. Finally the user. Shared canonical rows (Place, ReelSource, City) are
