@@ -263,7 +263,7 @@ struct ProfileSheet: View {
 /// for a working contact route, and the App Store listing's support URL is not
 /// reachable from inside the app.
 enum Support {
-    static let email = "dirghvshah@gmail.com"
+    static let email = "noshmap@outlook.com"
 
     static var mailURL: URL? {
         var c = URLComponents()
