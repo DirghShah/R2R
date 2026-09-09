@@ -48,6 +48,10 @@ class Settings(BaseSettings):
 
     # --- Reel fetching (Instagram) ---
     reel_fetcher: str = "apify"  # apify | ytdlp | stub
+    # When the primary fetcher fails, try yt-dlp before giving up. Different
+    # failure mode (local extractor vs hosted service), so the two rarely break
+    # together — which is the only reason to carry both.
+    fetcher_fallback: bool = True
     apify_token: str | None = None
     apify_actor: str = "apify/instagram-scraper"           # instagram
     apify_actor_tiktok: str = "clockworks/tiktok-scraper"  # tiktok
