@@ -169,6 +169,36 @@ def test_a_reel_abandoned_by_a_dead_worker_is_re_queued(client):
         db.close()
 
 
+def test_an_abandoned_reel_stops_reporting_itself_as_in_flight(client):
+    """The client polls every three seconds for as long as anything is active.
+
+    A reel nothing will ever finish therefore polls forever and spins forever,
+    so the read endpoints have to settle it even though the stored row can't.
+    """
+    reel_id = client.post("/reels", json={"url": REEL_A}).json()["reel_id"]
+    _age_reel(reel_id, minutes=45)
+
+    row = next(r for r in client.get("/reels").json() if r["reel_id"] == reel_id)
+    assert row["status"] == "failed", "an abandoned reel still looked active"
+    assert "again" in (row["error"] or ""), "the row must say how to recover"
+    assert client.get(f"/reels/{reel_id}").json()["status"] == "failed"
+
+    db = session()
+    try:
+        assert db.get(ReelSource, reel_id).status == "processing", \
+            "the stored status is untouched — /admin/stats counts these as stuck"
+    finally:
+        db.close()
+
+
+def test_a_reel_still_working_reports_itself_as_in_flight(client):
+    reel_id = client.post("/reels", json={"url": REEL_A}).json()["reel_id"]
+    _age_reel(reel_id, minutes=2)
+
+    row = next(r for r in client.get("/reels").json() if r["reel_id"] == reel_id)
+    assert row["status"] == "processing", "a live reel must not be written off"
+
+
 # --- account deletion with moderation rows -------------------------------
 
 

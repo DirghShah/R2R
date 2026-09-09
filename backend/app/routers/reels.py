@@ -124,6 +124,30 @@ def _is_stale(reel: ReelSource) -> bool:
     return age > timedelta(minutes=settings.stale_reel_minutes)
 
 
+_STUCK_MESSAGE = (
+    "That one didn't finish — the analyzer stopped partway. Share the link "
+    "again to retry it."
+)
+
+
+def _display_status(reel: ReelSource) -> tuple[str, str | None]:
+    """What to show the app for this reel, which is not always what's stored.
+
+    A worker killed mid-job leaves status="processing" with nothing left to
+    finish it. Reported verbatim, the row says "Analyzing…" forever: the client
+    polls every three seconds for as long as anything is in flight, so one dead
+    reel means an endless poll and a spinner that never resolves.
+
+    Reported as failed once it's clearly abandoned, the row settles, the poll
+    stops, and re-sharing the link recovers it — POST /reels already re-queues
+    a stale reel. Nothing is written here: "processing" is still the honest
+    stored state, and /admin/stats counts exactly those rows as stuck.
+    """
+    if reel.status in ("pending", "processing") and _is_stale(reel):
+        return "failed", _STUCK_MESSAGE
+    return reel.status, reel.error
+
+
 def _roll_quota_period(user: User) -> None:
     """Start a fresh count when the calendar month turns over.
 
@@ -193,19 +217,20 @@ def list_activity(
         for reel_id in {source_id, *(sources or [])}:
             counts[reel_id] = counts.get(reel_id, 0) + 1
 
-    return [
-        ReelActivityOut(
+    out = []
+    for reel, created in rows:
+        status, error = _display_status(reel)
+        out.append(ReelActivityOut(
             reel_id=reel.id,
-            status=reel.status,
+            status=status,
             platform=reel.platform,
             title=_title(reel),
             thumbnail_url=reel.thumbnail_url,
             place_count=counts.get(reel.id, 0),
-            error=reel.error,
+            error=error,
             created_at=created,
-        )
-        for reel, created in rows
-    ]
+        ))
+    return out
 
 
 @router.get("/reels/{reel_id}", response_model=ReelStatusResponse)
@@ -223,11 +248,12 @@ def reel_status(
     )
     if reel is None:
         raise HTTPException(status_code=404, detail="Reel not found")
+    status, error = _display_status(reel)
     return ReelStatusResponse(
         reel_id=reel.id,
-        status=reel.status,
+        status=status,
         place_count=_place_count(db, user.id, reel.id),
-        error=reel.error,
+        error=error,
     )
 
 
