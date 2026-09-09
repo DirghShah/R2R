@@ -244,7 +244,10 @@ struct MapScreen: View {
 
     private func dotColor(for label: String) -> Color {
         if label == Self.allFilter { return .appAccent }
-        return CuisineStyle.color(label)
+        // knownColor, not color: `color` never returns nil, so the category
+        // fallback below was unreachable and category chips were tinted from a
+        // hash instead of their own colour.
+        return CuisineStyle.knownColor(label)
             ?? allPlaces.first { $0.filterLabel == label }?.categoryEnum.tint
             ?? .appAccent
     }

@@ -78,13 +78,21 @@ extension PlaceCategory {
         }
     }
 
+    /// Used as the filter label when a place has no cuisine, so these names
+    /// share a namespace with the cuisine list and must not collide with it.
+    ///
+    /// "Café" and "Nightlife" used to sit here while the cuisine list carried
+    /// "Cafe / Coffee" and "Nightclub / Lounge", which put two chips on the map
+    /// for one thing: 23 places under one name and 8 under another, differing
+    /// only in whether the analyzer happened to tag a cuisine. Same words as
+    /// the cuisine list means the two merge into one chip.
     var displayName: String {
         switch self {
-        case .cafe: return "Café"
+        case .cafe: return "Cafe / Coffee"
         case .restaurant: return "Restaurant"
         case .hotel: return "Stay"
         case .bar: return "Bar"
-        case .club: return "Nightlife"
+        case .club: return "Nightclub / Lounge"
         case .sight: return "Sight"
         case .event: return "Event"
         case .other: return "Place"
@@ -174,12 +182,25 @@ enum CuisineStyle {
         0x6E7F8D, 0x8A938D, 0x7D6B7D, 0x6B7D6B, 0x8D7F6E,
     ]
 
-    static func color(_ cuisine: String?) -> Color? {
+    /// The curated colour for a label we actually recognise, or nil.
+    ///
+    /// Separate from `color` because a caller with a *category* name in hand
+    /// ("Restaurant", "Stay") wants to fall back to that category's own tint,
+    /// not to a hash-derived colour that means nothing.
+    static func knownColor(_ cuisine: String?) -> Color? {
         guard let cuisine else { return nil }
         let key = cuisine.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !key.isEmpty else { return nil }
         if let hex = known[key] { return Color(hex: hex) }
         if let canonical = aliases[key], let hex = known[canonical] { return Color(hex: hex) }
+        return nil
+    }
+
+    static func color(_ cuisine: String?) -> Color? {
+        guard let cuisine else { return nil }
+        let key = cuisine.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty else { return nil }
+        if let known = knownColor(key) { return known }
         // Stable hash across launches (String.hashValue is randomized per process).
         let sum = key.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
         return Color(hex: fallback[sum % fallback.count])
@@ -238,14 +259,21 @@ extension CachedPlace {
     /// AI cuisine label if present, else the broad category ("Café", "Bar", …).
     /// Drives the map filter chips and the pin/detail tags.
     var filterLabel: String {
-        if let c = cuisine?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
+        if let c = cuisine?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty,
+           // "Other" is the analyzer admitting it couldn't tell. As a chip it
+           // says nothing, and the category ("Restaurant", "Bar") says more.
+           c.caseInsensitiveCompare("Other") != .orderedSame {
             return c
         }
         return categoryEnum.displayName
     }
 
-    /// Cuisine-tinted pin color, falling back to the category tint.
-    var pinColor: Color { CuisineStyle.color(cuisine) ?? categoryEnum.tint }
+    /// Coloured by whatever the chip says, so a pin and its filter chip always
+    /// agree. Category names the cuisine palette doesn't know fall back to the
+    /// category's own tint rather than a meaningless hash colour.
+    var pinColor: Color {
+        CuisineStyle.knownColor(filterLabel) ?? categoryEnum.tint
+    }
 }
 
 /// Light, non-intrusive haptics — makes taps feel physical.

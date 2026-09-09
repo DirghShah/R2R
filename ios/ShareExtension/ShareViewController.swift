@@ -13,8 +13,13 @@ final class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        view.isOpaque = false
         let hosting = UIHostingController(rootView: ShareConfirmView(state: state))
         hosting.view.backgroundColor = .clear
+        // backgroundColor alone isn't enough — a hosting controller's view is
+        // opaque by default and paints black behind the toast, which is what
+        // made a one-line confirmation look like a full-screen takeover.
+        hosting.view.isOpaque = false
         addChild(hosting)
         hosting.view.frame = view.bounds
         hosting.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -37,7 +42,9 @@ final class ShareViewController: UIViewController {
             _ = try await APIClient.shared.submitReel(url: link, mapID: CurrentMap.id)
             state.mapName = CurrentMap.name
             state.phase = .saved
-            finish(after: 0.9)
+            // Long enough to read one line, short enough that it feels like a
+            // confirmation rather than a screen you have to wait out.
+            finish(after: 0.75)
         } catch {
             // Keep the link either way — the app drains this queue on next open.
             PendingQueue.enqueue(link)
@@ -83,48 +90,95 @@ final class ShareState: ObservableObject {
     @Published var mapName: String?
 }
 
+/// A toast, not a screen.
+///
+/// This was a centred card inside a full-bleed container, which reads as a
+/// modal you have to acknowledge — a lot of ceremony for "got it, it's
+/// processing". Sharing a reel should feel like the share sheet closing with a
+/// note left behind, so the confirmation is a single compact row pinned to the
+/// bottom, sized to its text, over as much of the underlying app as the system
+/// will let an extension show.
 private struct ShareConfirmView: View {
     @ObservedObject var state: ShareState
 
     var body: some View {
-        VStack(spacing: 10) {
-            switch state.phase {
-            case .working:
-                ProgressView()
-                Text("Saving to Nosh…").font(.headline)
-            case .saved:
-                icon("checkmark.circle.fill", .green)
-                Text("Analyzing — pins coming up").font(.headline)
-                if let name = state.mapName {
-                    Text("Saving to \(name)")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-            case .offline:
-                icon("wifi.slash", .orange)
-                Text("Can't reach Nosh").font(.headline)
-                Text("Network lost. Saved — it'll upload when your phone can reach the backend again.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            case .failed:
-                icon("exclamationmark.triangle.fill", .orange)
-                Text("Couldn't save that reel").font(.headline)
-                Text("Saved to retry — open Nosh once you're back online.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            case .unsupported:
-                icon("link.badge.plus", .orange)
-                Text("Unsupported link").font(.headline)
-                Text("Share an Instagram, TikTok, or YouTube link.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            }
+        VStack {
+            Spacer()
+            toast
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
         }
-        .multilineTextAlignment(.center)
-        .padding(28)
-        .frame(maxWidth: 320)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: state.phase)
+    }
+
+    private var toast: some View {
+        HStack(spacing: 11) {
+            leading
+                .frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07))
+        )
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+    }
+
+    @ViewBuilder private var leading: some View {
+        switch state.phase {
+        case .working:
+            ProgressView().controlSize(.small)
+        case .saved:
+            icon("checkmark.circle.fill", .green)
+        case .offline:
+            icon("wifi.slash", .orange)
+        case .failed:
+            icon("exclamationmark.triangle.fill", .orange)
+        case .unsupported:
+            icon("link.badge.plus", .orange)
+        }
+    }
+
+    private var title: String {
+        switch state.phase {
+        case .working:     return "Saving to Nosh…"
+        case .saved:       return "Analyzing — pins coming up"
+        case .offline:     return "Can't reach Nosh"
+        case .failed:      return "Couldn't save that reel"
+        case .unsupported: return "Unsupported link"
+        }
+    }
+
+    private var detail: String? {
+        switch state.phase {
+        case .working:     return nil
+        case .saved:       return state.mapName.map { "Saving to \($0)" }
+        case .offline:     return "Saved — it'll upload when you're back online."
+        case .failed:      return "Saved to retry — open Nosh to finish."
+        case .unsupported: return "Share an Instagram, TikTok, or YouTube link."
+        }
     }
 
     private func icon(_ name: String, _ color: Color) -> some View {
-        Image(systemName: name).font(.largeTitle).foregroundStyle(color)
+        Image(systemName: name)
+            .font(.system(size: 21, weight: .semibold))
+            .foregroundStyle(color)
     }
 }

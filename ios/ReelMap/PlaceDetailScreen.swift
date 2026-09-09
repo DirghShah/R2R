@@ -559,12 +559,20 @@ struct PlaceDetailScreen: View {
 
     // MARK: Deep links
 
+    /// Open the reel itself, not just the app it lives in.
+    ///
+    /// This used to rewrite the https link into the instagram:// scheme by
+    /// swapping the host, which turned
+    /// `https://www.instagram.com/reel/ABC/` into `instagram:///reel/ABC/` —
+    /// an empty host and a path the scheme defines no route for. Instagram
+    /// accepted it, ignored it, and opened the feed, so "Open reel" always
+    /// landed on whatever Instagram felt like showing.
+    ///
+    /// The https link needs no rewriting at all: Instagram, TikTok and YouTube
+    /// all claim their own links, so iOS hands this to the app when it is
+    /// installed and to Safari when it isn't. One line covers all three.
     private func openReel(_ url: URL) {
-        if url.host?.contains("instagram.com") == true,
-           let app = URL(string: url.absoluteString.replacingOccurrences(of: "https://www.instagram.com", with: "instagram://")),
-           UIApplication.shared.canOpenURL(app) {
-            UIApplication.shared.open(app)
-        } else { UIApplication.shared.open(url) }
+        UIApplication.shared.open(url)
     }
 
     private func openAppleMaps() {
