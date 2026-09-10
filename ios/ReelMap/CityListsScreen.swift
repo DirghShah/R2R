@@ -196,7 +196,7 @@ struct CityListsScreen: View {
                 Image(systemName: "square.stack.3d.up.fill").font(.system(size: 24, weight: .semibold)).foregroundStyle(.appAccent)
             }
             Text("No saved places yet").font(.display(19, .semibold)).foregroundStyle(.ink)
-            Text("Analyze a reel and ReelMap builds your city lists automatically — grouped, ranked, and ready to explore.")
+            Text("Analyze a reel and Nosh builds your city lists automatically — grouped, ranked, and ready to explore.")
                 .font(.callout).foregroundStyle(.inkSecondary).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -227,7 +227,7 @@ private struct CityRow: View {
             let area = p.address ?? p.cityLabel ?? ""
             return "• \(p.name)\(area.isEmpty ? "" : " — \(area)")"
         }
-        return "\(name) — saved on ReelMap\n" + lines.joined(separator: "\n")
+        return "\(name) — saved on Nosh\n" + lines.joined(separator: "\n")
     }
 
     var body: some View {

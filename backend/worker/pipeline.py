@@ -275,7 +275,12 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int,
 
 
 def _upsert_place(db, ep, geo) -> Place:
-    city = _get_or_create_city(db, geo.city or ep.city, geo.country or ep.country)
+    # Region first: it decides which city aliases apply, and it is also what
+    # the pin ends up labelled with.
+    region = geo.region or geocode.region_from_address(geo.address)
+    city = _get_or_create_city(
+        db, geo.city or ep.city, geo.country or ep.country, region=region
+    )
     place = None
     if geo.external_place_id:
         place = db.scalar(select(Place).where(Place.external_place_id == geo.external_place_id))
@@ -302,7 +307,7 @@ def _upsert_place(db, ep, geo) -> Place:
         place.lat = geo.lat
         place.lng = geo.lng
         place.address = geo.address
-        place.region = geo.region or geocode.region_from_address(geo.address)
+        place.region = region
     place.rating = geo.rating
     place.review_count = geo.review_count
     place.price_level = geo.price_level
@@ -383,12 +388,15 @@ def _bucket_collection(db, user_id: str, place: Place) -> None:
         db.add(coll)
 
 
-def _get_or_create_city(db, name: str | None, country: str | None) -> City | None:
-    if not name:
+def _get_or_create_city(
+    db, name: str | None, country: str | None, region: str | None = None
+) -> City | None:
+    canonical = geocode.normalize_city(name, region)
+    if not canonical:
         return None
-    city = db.scalar(select(City).where(City.name == name, City.country == country))
+    city = db.scalar(select(City).where(City.name == canonical, City.country == country))
     if city is None:
-        city = City(name=name, country=country)
+        city = City(name=canonical, country=country)
         db.add(city)
         db.flush()
     return city

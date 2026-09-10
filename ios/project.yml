@@ -23,7 +23,7 @@ settings:
     # Bump CURRENT_PROJECT_VERSION for every upload: App Store Connect refuses
     # a version+build pair it has already seen.
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "8"
+    CURRENT_PROJECT_VERSION: "9"
     # The deployed backend. Works from anywhere — cellular, other Wi-Fi, a
     # friend's phone — which LAN addresses never did.
     API_BASE_URL: "https://r2r-production-727a.up.railway.app"

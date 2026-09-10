@@ -117,16 +117,28 @@ final class AppState: ObservableObject {
     }
 }
 
+/// The first thing anyone sees on launch, so it should be the mark and the
+/// right name — this said "ReelMap" next to a pin glyph long after every other
+/// surface said Nosh. Same treatment as the sign-in screen: the real wordmark
+/// as a template image on a plain black or white ground.
 private struct SplashView: View {
+    @Environment(\.colorScheme) private var scheme
+
+    private var ground: Color { scheme == .dark ? .black : .white }
+    private var ink: Color { scheme == .dark ? .white : .black }
+
     var body: some View {
         ZStack {
-            Color.canvas.ignoresSafeArea()
-            VStack(spacing: 16) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 64, weight: .semibold))
-                    .foregroundStyle(.appAccent)
-                Text("ReelMap").font(.display(34, .bold)).foregroundStyle(.ink)
-                ProgressView().padding(.top, 4)
+            ground.ignoresSafeArea()
+            VStack(spacing: 22) {
+                Image("Wordmark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 44)
+                    .foregroundStyle(ink)
+                    .accessibilityLabel("Nosh")
+                ProgressView().tint(ink.opacity(0.4))
             }
         }
     }

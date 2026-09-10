@@ -96,6 +96,88 @@ def region_from_address(address: str | None) -> str | None:
     return None
 
 
+# Names that are one city wherever the geocoder or the model happens to split
+# them. Keyed by the region they belong to, because several are ambiguous
+# outside it — Manhattan is also a city in Kansas, and Brooklyn is a village in
+# Ohio. A place with no region at all still resolves, on the reasoning that a
+# food reel saying "Manhattan" means the island roughly always.
+_CITY_ALIASES: dict[str | None, dict[str, str]] = {
+    # Unambiguous anywhere.
+    None: {
+        "new york city": "New York",
+        "nyc": "New York",
+        "n.y.c.": "New York",
+        "the bronx": "New York",
+        "bronx": "New York",
+        "staten island": "New York",
+        "long island city": "New York",
+    },
+    # The five boroughs and the neighbourhoods geocoders most often return in
+    # place of the city. All legally New York City.
+    "NY": {
+        "manhattan": "New York",
+        "brooklyn": "New York",
+        "queens": "New York",
+        "astoria": "New York",
+        "williamsburg": "New York",
+        "bushwick": "New York",
+        "greenpoint": "New York",
+        "park slope": "New York",
+        "dumbo": "New York",
+        "red hook": "New York",
+        "flushing": "New York",
+        "jackson heights": "New York",
+        "forest hills": "New York",
+        "sunnyside": "New York",
+        "harlem": "New York",
+        "soho": "New York",
+        "tribeca": "New York",
+        "chelsea": "New York",
+        "midtown": "New York",
+        "downtown brooklyn": "New York",
+        "greenwich village": "New York",
+        "east village": "New York",
+        "west village": "New York",
+        "lower east side": "New York",
+        "upper east side": "New York",
+        "upper west side": "New York",
+        "coney island": "New York",
+    },
+}
+
+
+def normalize_city(name: str | None, region: str | None = None) -> str | None:
+    """One city per city.
+
+    The city on a place is whatever the model wrote or the geocoder returned,
+    and both are inconsistent about the same place: New York arrived as "New
+    York", "New York City", "NYC", "Manhattan", "Brooklyn" and "Long Island
+    City", which became six separate city lists holding one map's worth of
+    restaurants.
+
+    Also strips a trailing region the model sometimes appends ("Austin, TX"),
+    since the region is a column of its own and leaving it in the name makes
+    "Austin" and "Austin, TX" two cities.
+    """
+    if not name:
+        return None
+    cleaned = " ".join(name.split()).strip(" ,")
+    if not cleaned:
+        return None
+
+    # "Austin, TX" / "Paris, France" — keep only the leading locality.
+    head = cleaned.split(",")[0].strip()
+    if head:
+        cleaned = head
+
+    key = cleaned.lower()
+    for scope in (region, None):
+        alias = _CITY_ALIASES.get(scope, {}).get(key)
+        if alias:
+            return alias
+    return cleaned
+
+
 def is_real_place_name(name: str | None) -> bool:
     """False for placeholder names a model emits when it can't read a venue's
     name on-screen ('<UNKNOWN>', 'unknown', blank). Such names must never be

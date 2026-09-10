@@ -172,7 +172,7 @@ struct SignInScreen: View {
                     // halves matters — they have completely different fixes.
                     print("[signin] backend rejected: status=\(apiError.status) \(apiError.message)")
                     errorText = apiError.isNetwork
-                        ? "\(apiError.message)\n\nApple signed you in, but ReelMap's server couldn't be reached."
+                        ? "\(apiError.message)\n\nApple signed you in, but Nosh's server couldn't be reached."
                         : "Nosh's server rejected the sign-in.\n\n\(apiError.message)"
                 } catch {
                     print("[signin] unexpected failure: \(error)")
