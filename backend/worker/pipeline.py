@@ -71,13 +71,33 @@ def _claude_cost(model: str, in_tokens: int, out_tokens: int) -> float:
     return in_tokens / 1_000_000 * p_in + out_tokens / 1_000_000 * p_out
 
 
-def _total_cost(places: int, in_tok: int, out_tok: int) -> float:
-    """One place that knows what a run costs, used by both the log line and the
-    stored column so they can't drift apart."""
+def _cost_detail(places: int, in_tok: int, out_tok: int) -> dict:
+    """What a run cost and what it was made of.
+
+    One place that knows the answer, used by the log line, the stored total and
+    the stored breakdown, so the three can't drift apart. The vendor split and
+    the inputs are kept because a single total can't be broken down later, and
+    can't be re-priced when a vendor changes its rates.
+    """
     claude = _claude_cost(settings.anthropic_model, in_tok, out_tok)
     apify = settings.apify_cost_per_reel if settings.reel_fetcher == "apify" else 0.0
     geo = 0.0 if settings.geocoder == "nominatim" else settings.google_cost_per_place * places
-    return round(claude + apify + geo, 4)
+    return {
+        "model": settings.anthropic_model,
+        "fetcher": settings.reel_fetcher,
+        "geocoder": settings.geocoder,
+        "input_tokens": in_tok,
+        "output_tokens": out_tok,
+        "places": places,
+        "claude_usd": round(claude, 6),
+        "fetch_usd": round(apify, 6),
+        "geocode_usd": round(geo, 6),
+        "total_usd": round(claude + apify + geo, 6),
+    }
+
+
+def _total_cost(places: int, in_tok: int, out_tok: int) -> float:
+    return round(_cost_detail(places, in_tok, out_tok)["total_usd"], 4)
 
 
 def _log_metrics(reel: ReelSource, count: int, seconds: float,
@@ -137,7 +157,8 @@ def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
             count, in_tok, out_tok = _run_analysis(db, reel, user_id, target_map)
             reel.status = "done"
             reel.analyzed_at = datetime.now(timezone.utc)
-            reel.cost_usd = _total_cost(count, in_tok, out_tok)
+            reel.cost_detail = _cost_detail(count, in_tok, out_tok)
+            reel.cost_usd = round(reel.cost_detail["total_usd"], 4)
             db.commit()
         except UnsupportedReel as exc:
             # Not a failure: the analysis worked and the answer was "there's
@@ -149,7 +170,8 @@ def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
             reel.analyzed_at = datetime.now(timezone.utc)
             # No geocoding happened — that's the saving, and recording zero
             # places is what makes it measurable.
-            reel.cost_usd = _total_cost(0, exc.input_tokens, exc.output_tokens)
+            reel.cost_detail = _cost_detail(0, exc.input_tokens, exc.output_tokens)
+            reel.cost_usd = round(reel.cost_detail["total_usd"], 4)
             db.commit()
             print(f"[metrics] analyze SKIPPED reel={reel.canonical_id} reason={reel.error}", flush=True)
             _notify(user_id, 0, reel)

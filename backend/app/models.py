@@ -152,6 +152,12 @@ class ReelSource(Base):
     # which meant the only way to answer "what am I spending" was to grep a log
     # stream that rotates. A column makes it a query.
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The ingredients behind cost_usd: which model ran, how many tokens, how
+    # many places were geocoded, and what each vendor came to. The total alone
+    # can't be broken down after the fact and can't be re-priced when a vendor
+    # changes its rates — and "what is this actually costing me, and where" is
+    # the only question anyone asks of this data.
+    cost_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class City(Base):

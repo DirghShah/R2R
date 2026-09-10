@@ -100,6 +100,45 @@ class Settings(BaseSettings):
     # Rough $/place for the cost log (Text Search Pro + one Place Details Enterprise).
     google_cost_per_place: float = 0.05
 
+    # What the thing costs to exist, as opposed to what each reel costs. Per-reel
+    # spend is currently a rounding error next to hosting, so a cost view that
+    # only counts reels answers the wrong question. JSON so it can be edited on
+    # the platform without a deploy: a list of
+    # {"name": str, "usd": float, "period": "monthly" | "annual" | "once"}.
+    # Annual and one-off entries are amortised to a month where a monthly total
+    # is what's wanted.
+    fixed_costs: str = (
+        '[{"name": "Railway Hobby", "usd": 5.0, "period": "monthly"},'
+        ' {"name": "Apple Developer Program", "usd": 99.0, "period": "annual"},'
+        ' {"name": "noshmap.app domain", "usd": 20.0, "period": "annual"}]'
+    )
+
+    def fixed_cost_items(self) -> list[dict]:
+        """Parsed `fixed_costs`, never raising — a malformed override must not
+        take down the stats endpoint, and an empty list reads as "none set"."""
+        import json
+
+        try:
+            items = json.loads(self.fixed_costs)
+        except (ValueError, TypeError):
+            return []
+        if not isinstance(items, list):
+            return []
+        out = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                usd = float(item.get("usd", 0))
+            except (TypeError, ValueError):
+                continue
+            period = str(item.get("period", "monthly")).lower()
+            if period not in {"monthly", "annual", "once"}:
+                period = "monthly"
+            out.append({"name": str(item.get("name", "unnamed")), "usd": usd,
+                        "period": period})
+        return out
+
     # --- Transcription ---
     enable_transcription: bool = True
     whisper_model: str = "small"
