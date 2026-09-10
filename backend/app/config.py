@@ -52,7 +52,11 @@ class Settings(BaseSettings):
 
     # --- AI / pipeline ---
     anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-4-8"
+    # Production sets this explicitly (currently claude-haiku-4-5). The default
+    # matters only when the variable is missing, so it should be the current
+    # flagship rather than a superseded one — an unset variable landing on a
+    # previous-generation model is a silent downgrade nobody would notice.
+    anthropic_model: str = "claude-opus-5"
 
     # --- Reel fetching (Instagram) ---
     reel_fetcher: str = "apify"  # apify | ytdlp | stub

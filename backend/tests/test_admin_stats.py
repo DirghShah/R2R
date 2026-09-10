@@ -187,3 +187,19 @@ def test_the_ledger_is_guarded_by_the_same_token(client, monkeypatch):
     assert client.get("/admin/reels").status_code == 404
     assert client.get("/admin/reels", headers=_auth(client, "wrong")).status_code == 404
     assert client.get("/admin/reels", headers=_auth(client)).status_code == 200
+
+
+def test_every_model_we_might_run_has_a_price():
+    """A model missing from the table prices at the fallback, which is the most
+    expensive entry — deliberately, since a cost report that under-reports is
+    the one nobody investigates."""
+    from app.config import Settings
+    from worker.pipeline import _CLAUDE_PRICES, _claude_cost
+
+    assert Settings(_env_file=None).anthropic_model in _CLAUDE_PRICES, \
+        "the default model must be priceable"
+
+    # 1M input tokens on Haiku is $1.00; on an unknown model it must not come
+    # back cheaper than that.
+    assert _claude_cost("claude-haiku-4-5", 1_000_000, 0) == 1.0
+    assert _claude_cost("something-we-have-never-heard-of", 1_000_000, 0) >= 1.0

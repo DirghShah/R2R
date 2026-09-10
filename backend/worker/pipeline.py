@@ -58,16 +58,23 @@ _CATEGORY_TITLES = {
     "event": "events", "other": "saved places",
 }
 
-# Claude pricing per 1M tokens (input, output). Keep in sync with the model in use.
+# Claude pricing per 1M tokens (input, output). An unlisted model falls back to
+# the most expensive entry on purpose: a cost report that under-reports is worse
+# than one that over-reports, because nobody investigates a bill that looks fine.
 _CLAUDE_PRICES = {
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (2.0, 10.0),
     "claude-haiku-4-5": (1.0, 5.0),
-    "claude-sonnet-4-6": (3.0, 15.0),
+    # Previous generation, kept so historical reels still price correctly.
     "claude-opus-4-8": (5.0, 25.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
 }
+
+_FALLBACK_PRICE = max(_CLAUDE_PRICES.values())
 
 
 def _claude_cost(model: str, in_tokens: int, out_tokens: int) -> float:
-    p_in, p_out = _CLAUDE_PRICES.get(model, _CLAUDE_PRICES["claude-opus-4-8"])
+    p_in, p_out = _CLAUDE_PRICES.get(model, _FALLBACK_PRICE)
     return in_tokens / 1_000_000 * p_in + out_tokens / 1_000_000 * p_out
 
 
