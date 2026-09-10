@@ -64,6 +64,20 @@ Full design lives in `README.md`, `backend/README.md`, `ios/README.md`.
    `ALLOW_DEV_SIGN_IN=true`. It defaults to off and must never be set on a
    deployed service — it is a complete auth bypass.
 
+## Checking iOS changes without a Mac
+There is no Swift compiler in the Linux dev environment, and there can't be a
+useful one — SwiftUI, SwiftData and UIKit are closed Apple frameworks. Every iOS
+change is therefore unverified until it reaches Xcode, and the failures that got
+there were dull ones costing a full build cycle each.
+
+`python3 ios/check.py` closes the two closeable gaps: real syntax checking via a
+Swift grammar (not brace counting), and catching a file that uses a SharedKit
+symbol without importing SharedKit — which is exactly what broke build 11. It
+cannot type-check; wrong argument labels and bad SF Symbol names still need
+Xcode. Run it before handing over any iOS change.
+
+    pip install tree_sitter tree_sitter_swift
+
 ## Conventions / guardrails
 - Claude model is config-driven (`ANTHROPIC_MODEL`); default in code is opus, dev uses haiku.
 - Keep the reel-fetch logic behind the `ReelFetcher` interface — it's the fragile/ToS part.
