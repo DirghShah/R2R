@@ -160,6 +160,25 @@ class ReelSource(Base):
     cost_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
+class GeocodeMiss(Base):
+    """A name and city we searched for and found nothing usable.
+
+    Without this, a viral reel naming a venue the geocoder doesn't know costs a
+    fresh billed search for every single person who shares it, and the answer is
+    "no" every time. Expired rather than permanent, because places do get added.
+    """
+
+    __tablename__ = "geocode_misses"
+    __table_args__ = (
+        UniqueConstraint("name_key", "city_key", name="uq_geocode_miss"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name_key: Mapped[str] = mapped_column(String, index=True)
+    city_key: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class City(Base):
     __tablename__ = "cities"
     __table_args__ = (UniqueConstraint("name", "country", name="uq_city_name_country"),)
@@ -199,6 +218,12 @@ class Place(Base):
     business_status: Mapped[str | None] = mapped_column(String, nullable=True)
     google_maps_url: Mapped[str | None] = mapped_column(String, nullable=True)
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When rating / photos / hours were last fetched. Null means never: the pin
+    # exists but nobody has opened the place yet, so we haven't paid for the
+    # enrichment call. Distinct from last_verified_at, which only records that
+    # the row was written — a venue can legitimately have no rating, so "is
+    # rating null" can't answer "have we asked".
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     city_id: Mapped[str | None] = mapped_column(ForeignKey("cities.id"), nullable=True)
 
     city: Mapped[City | None] = relationship()

@@ -310,6 +310,18 @@ public actor APIClient {
         try await requestVoid("/places/\(id)", method: "DELETE")
     }
 
+    /// Ask the server to fill in rating, photos and hours for one place.
+    ///
+    /// Ratings and photos are a second, separately billed lookup that buys
+    /// nothing until somebody is actually looking at the place — so the app
+    /// asks for them when a place is opened rather than having every pin pay
+    /// for them at analysis time. Cheap and idempotent: a place enriched
+    /// recently comes straight back with no external call.
+    @discardableResult
+    public func enrichPlace(id: String) async throws -> SavedPlace {
+        try await request("/places/\(id)/enrich", method: "POST")
+    }
+
     /// Drop the pin by hand for a place the geocoder couldn't resolve.
     @discardableResult
     public func setPlaceLocation(

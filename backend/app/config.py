@@ -101,8 +101,43 @@ class Settings(BaseSettings):
     place_auto_accept_threshold: float = 0.85
     place_min_margin_over_second: float = 0.15
     place_min_score: float = 0.55  # below this, leave un-pinned rather than mispin
-    # Rough $/place for the cost log (Text Search Pro + one Place Details Enterprise).
-    google_cost_per_place: float = 0.05
+    # Rough $/place for the cost log. Two billed calls: Text Search Pro (~$0.032)
+    # to find and verify the venue, plus Place Details Enterprise (~$0.035) for
+    # rating, photos and hours. `rating` alone is what lifts Details to the
+    # Enterprise tier — Google prices a call by its most expensive field.
+    google_cost_per_search: float = 0.032
+    google_cost_per_enrichment: float = 0.035
+    google_cost_per_place: float = 0.067
+
+    # --- Not paying twice for the same restaurant ---
+    # Look for a canonical place we already resolved before calling anyone. Food
+    # reels cluster hard on the same venues, so the same restaurant arrives over
+    # and over from different people, and every arrival used to be a fresh pair
+    # of billed lookups.
+    place_cache_enabled: bool = True
+    # Deliberately stricter than place_auto_accept_threshold (0.85). A wrong
+    # cache hit silently merges two different restaurants for everyone, forever,
+    # which is far worse than paying for one more lookup.
+    place_cache_min_similarity: float = 0.92
+    # How long to remember that a name found nothing, so a viral reel naming a
+    # venue Google doesn't know isn't re-searched by every person who shares it.
+    # Bounded because Google does add places.
+    geocode_miss_ttl_days: int = 30
+
+    # --- Enrich when someone looks, not when we pin ---
+    # The scorer that decides *which* venue is right reads only Text Search
+    # fields, so Place Details buys nothing at analysis time — it is rating,
+    # photos and hours, which matter only once a person opens the place. With
+    # this on, pins cost one call instead of two and the rest is fetched on
+    # first open.
+    #
+    # Off by default: turning it on without an app that requests enrichment
+    # leaves places with no rating or photos. Flip it once build 10 is out.
+    lazy_place_enrichment: bool = False
+    # Re-enrich on open when the stored data is older than this. Hours and
+    # ratings go stale, and today a place enriched once keeps its opening hours
+    # forever.
+    place_enrichment_stale_days: int = 30
 
     # What the thing costs to exist, as opposed to what each reel costs. Per-reel
     # spend is currently a rounding error next to hosting, so a cost view that

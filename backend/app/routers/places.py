@@ -1,18 +1,20 @@
 """Read the user's saved places and auto-generated city lists."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
+from app.config import settings
 from app.routers.moderation import blocked_ids
 from app.db import get_db
 from app.maps import member_map_ids, require_member
 from app.models import City, Collection, Map, MapMember, Place, ReelSource, User, UserPlace
 from app.schemas import CollectionOut, SetPlaceLocationRequest, UserPlaceOut
+from worker import geocode
 from worker.geocode import region_from_address
 
 router = APIRouter(tags=["places"])
@@ -195,3 +197,73 @@ def list_collections(
             )
         )
     return out
+
+
+@router.post("/places/{user_place_id}/enrich", response_model=UserPlaceOut)
+def enrich_place(
+    user_place_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserPlaceOut:
+    """Fetch this place's rating, photos and hours, if we don't have them fresh.
+
+    Enrichment is the second of two billed lookups, and it buys nothing until a
+    person is actually looking at the place — the scorer that decides *which*
+    venue is right reads only the search response. So the app calls this when
+    someone opens a place, and the cost follows attention instead of preceding
+    it.
+
+    Idempotent and cheap to call: a place enriched recently returns immediately
+    without contacting anyone. Failures are silent by design — the caller
+    already has a usable place and a missing rating is not worth an error.
+    """
+    up = _member_place(db, user_place_id, user.id)
+    place = up.place
+    if place is None:
+        raise HTTPException(status_code=404, detail="Place not found")
+
+    if _enrichment_is_fresh(place):
+        return _to_out(up)
+
+    data = geocode.enrich(
+        place.external_place_id or "", place.name,
+        city=place.city.name if place.city else None,
+    )
+    if data is None:
+        # Nothing to add — a Nominatim pin, a dead id, or Google was down. Mark
+        # the attempt so a place that can never be enriched isn't retried on
+        # every single open.
+        place.enriched_at = datetime.now(timezone.utc)
+        db.commit()
+        return _to_out(up)
+
+    place.rating = data.rating
+    place.review_count = data.review_count
+    place.price_level = data.price_level
+    place.photos = data.photos or None
+    place.hours = data.hours
+    place.utc_offset_minutes = data.utc_offset_minutes
+    place.phone = data.phone
+    place.business_status = data.business_status or place.business_status
+    place.google_maps_url = data.google_maps_url or place.google_maps_url
+    # A hand-placed pin outranks the geocoder here too: enrichment must never
+    # move a location the user corrected.
+    if place.location_source != "user" and data.address:
+        place.address = data.address
+        place.region = data.region or place.region
+    place.enriched_at = datetime.now(timezone.utc)
+    place.last_verified_at = place.enriched_at
+    db.commit()
+    db.refresh(up)
+    return _to_out(up)
+
+
+def _enrichment_is_fresh(place: Place) -> bool:
+    """Enriched, and recently enough to trust the opening hours."""
+    if place.enriched_at is None:
+        return False
+    seen = place.enriched_at
+    if seen.tzinfo is None:  # SQLite hands back naive datetimes
+        seen = seen.replace(tzinfo=timezone.utc)
+    age = datetime.now(timezone.utc) - seen
+    return age < timedelta(days=settings.place_enrichment_stale_days)

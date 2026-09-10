@@ -96,6 +96,14 @@ def summary(d: dict) -> None:
     print(f"  {'last 30 days':<26} {money(cost['last_30d']):>10}")
     print(f"  {'average per reel':<26} {micro(cost['avg_per_reel_30d']):>10}")
 
+    cache = d.get("cache")
+    if cache and (cache["places_from_cache"] or cache["places_looked_up"]):
+        rule("PLACE CACHE — restaurants we didn't pay to look up twice")
+        print(f"  {'reused from the database':<26} {cache['places_from_cache']:>10}")
+        print(f"  {'looked up (billed)':<26} {cache['places_looked_up']:>10}")
+        print(f"  {'hit rate':<26} {cache['hit_rate'] * 100:>9.1f}%")
+        print(f"  {'saved so far':<26} {money(cache['saved_usd']):>10}")
+
     rule("FIXED COST — per month")
     for item in fixed["items"]:
         per_month = item["usd"] / 12 if item["period"] == "annual" else item["usd"]

@@ -111,6 +111,28 @@ healthy-looking service would have shown it.
 
 ### Cost control
 
+Two Google calls used to run for every extracted place, every time. Three
+changes cut that:
+
+- **The place cache.** Before any external lookup, `_cached_place` looks for a
+  canonical place already resolved in the same city. Food reels cluster on the
+  same venues, so the same restaurant arrives repeatedly. Deliberately strict —
+  same category, same city, name similarity above `PLACE_CACHE_MIN_SIMILARITY`
+  (0.92, higher than the 0.85 used to accept a Google candidate) — because a
+  wrong hit merges two restaurants permanently, for everyone.
+- **The miss cache.** A name that found nothing is remembered for
+  `GEOCODE_MISS_TTL_DAYS`, so a viral reel naming an unknown venue isn't
+  re-searched by every person who shares it. Bounded, because Google adds places.
+- **`LAZY_PLACE_ENRICHMENT`.** Off by default. On, a pin costs one Text Search
+  instead of a search plus a Place Details call; rating, photos and hours are
+  fetched by `POST /places/{id}/enrich` when someone opens the place. Safe
+  because the scorer that decides *which* venue is right reads only search
+  fields — Details buys nothing at analysis time. **Do not turn this on until
+  an app that calls the enrich endpoint is live**, or places will show with no
+  rating or photos.
+
+
+
 A reel with 5 places costs roughly **$0.27** — Apify $0.005, Google Places
 5 x $0.05, Claude ~$0.02. Google Places dominates. `_log_metrics` prints the
 real per-reel cost to the worker log.

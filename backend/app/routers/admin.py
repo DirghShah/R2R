@@ -123,6 +123,9 @@ def stats(db: Session = Depends(get_db)) -> dict:
             # figure that ignores fixed cost is the wrong number to quote.
             "total_monthly_estimate": round(fixed["monthly_equivalent"] + cost_month, 2),
         },
+        # Whether the place cache is actually earning its keep. Reads straight
+        # off the stored breakdowns, so it can't drift from what was billed.
+        "cache": _cache_effect(db),
         "unit_economics": {
             # What one more user who fills the free tier would cost.
             "cost_of_a_maxed_free_user_monthly": round(
@@ -152,6 +155,27 @@ def _by_vendor(db: Session) -> dict:
         totals["fetch"] += detail.get("fetch_usd", 0.0)
         totals["geocode"] += detail.get("geocode_usd", 0.0)
     return {k: round(v, 4) for k, v in totals.items()}
+
+
+def _cache_effect(db: Session) -> dict:
+    """How many places were reused instead of looked up, and what that saved.
+
+    Only counts reels analysed since the breakdown started recording both
+    numbers; earlier ones have nothing to compare.
+    """
+    saved_places = looked_up = 0
+    for (detail,) in db.execute(select(ReelSource.cost_detail)).all():
+        if not detail or "places_searched" not in detail:
+            continue
+        saved_places += detail.get("places", 0)
+        looked_up += detail.get("places_searched", 0)
+    reused = max(saved_places - looked_up, 0)
+    return {
+        "places_from_cache": reused,
+        "places_looked_up": looked_up,
+        "hit_rate": round(reused / saved_places, 3) if saved_places else 0.0,
+        "saved_usd": round(reused * settings.google_cost_per_place, 4),
+    }
 
 
 def _fixed_costs() -> dict:

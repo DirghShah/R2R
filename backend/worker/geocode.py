@@ -31,6 +31,11 @@ _PLACES_MEDIA = "https://places.googleapis.com/v1/{photo_name}/media"
 _TEXT_FIELD_MASK = ",".join([
     "places.id", "places.displayName", "places.formattedAddress",
     "places.location", "places.types", "places.primaryType", "places.businessStatus",
+    # Carries the state/province code. Needed here because with lazy enrichment
+    # the Details call — which used to supply it — may never run. Address
+    # components are already inside the Pro tier this call sits in, so it adds
+    # nothing to the bill.
+    "places.addressComponents",
 ])
 _DETAILS_FIELD_MASK = ",".join([
     "id", "displayName", "formattedAddress", "addressComponents", "location", "rating",
@@ -59,6 +64,9 @@ class GeocodeResult:
     city: str | None = None
     region: str | None = None  # state/province short code, e.g. "TX", "NY"
     country: str | None = None
+    # False when this came from the search call alone and still owes rating,
+    # photos and hours. Nominatim results are never enriched either.
+    enriched: bool = True
 
 
 _PLACEHOLDER_NAMES = {"unknown", "n/a", "na", "unnamed", "unknown place", ""}
@@ -176,6 +184,29 @@ def normalize_city(name: str | None, region: str | None = None) -> str | None:
         if alias:
             return alias
     return cleaned
+
+
+def candidate_city_names(name: str | None) -> set[str]:
+    """Every canonical city a raw name could belong to.
+
+    Writes normalise the city knowing its region, so "Brooklyn" is stored as
+    "New York". A later lookup has no region yet — that is the whole point of
+    looking up before paying — so it has to consider both: the plain
+    normalisation and anything the aliases map this name onto under any region.
+    Without this the cache misses every borough, which for a New York-heavy app
+    is most of it.
+    """
+    if not name:
+        return set()
+    plain = normalize_city(name)
+    if not plain:
+        return set()
+    out = {plain}
+    key = name.split(",")[0].strip().lower()
+    for scope in _CITY_ALIASES.values():
+        if key in scope:
+            out.add(scope[key])
+    return out
 
 
 def is_real_place_name(name: str | None) -> bool:
@@ -299,6 +330,19 @@ def _norm_join(text: str | None) -> str:
     )
 
 
+def match_key(text: str | None) -> str:
+    """Comparison form of a venue or city name — case, punctuation and spacing
+    removed. The one place that decides what "the same name" means, so the cache
+    lookup and the candidate scorer can't disagree about it."""
+    return _norm_join(text)
+
+
+def name_similarity(a: str | None, b: str | None) -> float:
+    """0..1 similarity between two venue names, on the same normalisation the
+    Google candidate scorer uses."""
+    return difflib.SequenceMatcher(None, match_key(a), match_key(b)).ratio()
+
+
 def _score_candidate(place, cand: dict) -> float:
     """Weighted match score in [0,1]. Protects against Google's top result being
     the wrong venue/branch: name similarity + locality + category + neighborhood.
@@ -355,7 +399,69 @@ def _google(place, address_hint: str | None = None) -> GeocodeResult:
              place.name, (best.get("displayName") or {}).get("text"),
              best_score, best_score - second, "high" if confident else "medium")
 
+    # The scorer above read only Text Search fields, so the decision is already
+    # made. Place Details adds rating, photos and hours — things nobody sees
+    # until they open the place — at the cost of a second billed call.
+    if settings.lazy_place_enrichment:
+        return _from_search_candidate(best, place)
     return _places_details(best["id"], place)
+
+
+def _from_search_candidate(cand: dict, place) -> GeocodeResult:
+    """A pinnable result built from the search hit alone.
+
+    Everything needed to put the pin on the map and identify the venue again
+    later. No rating, photos, hours, price or phone — those arrive when someone
+    opens the place. `enriched=False` is what marks it as still owing that.
+    """
+    loc = cand.get("location") or {}
+    lat, lng = loc.get("latitude"), loc.get("longitude")
+    if lat is None or lng is None:
+        return GeocodeResult(name=place.name, city=place.city,
+                             country=getattr(place, "country", None))
+    address = cand.get("formattedAddress")
+    return GeocodeResult(
+        external_place_id=f"gp:{cand['id']}",
+        name=(cand.get("displayName") or {}).get("text") or place.name,
+        lat=lat,
+        lng=lng,
+        address=address,
+        business_status=cand.get("businessStatus"),
+        city=place.city,
+        region=_region_from_components(cand.get("addressComponents"))
+        or region_from_address(address),
+        country=getattr(place, "country", None),
+        enriched=False,
+    )
+
+
+@dataclass
+class _EnrichTarget:
+    """The handful of fields _places_details reads off an extracted place."""
+
+    name: str
+    city: str | None = None
+    country: str | None = None
+
+
+def enrich(external_place_id: str, name: str, city: str | None = None,
+           country: str | None = None) -> GeocodeResult | None:
+    """Fetch rating, photos, hours and price for a place we already identified.
+
+    The second of the two billed Google calls, split out so it can run when a
+    person actually opens a place rather than for every pin at analysis time.
+    Returns None when enrichment isn't possible or the call fails; the caller
+    keeps whatever it already had.
+    """
+    if settings.geocoder != "google" or not settings.google_places_api_key:
+        return None
+    if not external_place_id or not external_place_id.startswith("gp:"):
+        return None  # nominatim ids can't be enriched by Google
+
+    result = _places_details(
+        external_place_id.removeprefix("gp:"), _EnrichTarget(name, city, country)
+    )
+    return result if result.lat is not None else None
 
 
 def _places_text_search(place, address_hint: str | None) -> list[dict]:

@@ -66,6 +66,10 @@ struct PlaceDetailScreen: View {
         .presentationDetents(detents)
         .presentationDragIndicator(.visible)
         .onAppear(perform: loadMark)
+        // Rating, photos and hours are fetched on open rather than for every
+        // pin at save time. The screen has already rendered from the cache by
+        // now, so this fills in behind it and never blocks anything.
+        .task(id: place.id) { await enrich() }
         .onDisappear(perform: persistMark)
         .confirmationDialog("Open in Maps", isPresented: $showMapsDialog, titleVisibility: .visible) {
             Button("Apple Maps") { openAppleMaps() }
@@ -555,6 +559,16 @@ struct PlaceDetailScreen: View {
         if u.contains("tiktok") { return "TikTok" }
         if u.contains("youtu") { return "YouTube" }
         return "Instagram"
+    }
+
+    private func enrich() async {
+        guard let fresh = try? await APIClient.shared.enrichPlace(id: place.id) else {
+            // A missing rating is not worth telling anyone about. The place is
+            // already on screen and usable.
+            return
+        }
+        place.update(from: fresh)
+        try? context.save()
     }
 
     // MARK: Deep links

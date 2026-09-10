@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 
 from sqlalchemy import func, select
 
 from app.config import settings
 from app.db import session
-from app.models import City, Collection, Place, ReelSource, User, UserPlace
+from app.models import City, Collection, GeocodeMiss, Place, ReelSource, User, UserPlace
 from worker import extract, frames, geocode, push
 from worker.fetchers import get_fetcher
 
@@ -78,7 +79,8 @@ def _claude_cost(model: str, in_tokens: int, out_tokens: int) -> float:
     return in_tokens / 1_000_000 * p_in + out_tokens / 1_000_000 * p_out
 
 
-def _cost_detail(places: int, in_tok: int, out_tok: int) -> dict:
+def _cost_detail(searched: int, in_tok: int, out_tok: int,
+                 places_saved: int | None = None) -> dict:
     """What a run cost and what it was made of.
 
     One place that knows the answer, used by the log line, the stored total and
@@ -88,14 +90,26 @@ def _cost_detail(places: int, in_tok: int, out_tok: int) -> dict:
     """
     claude = _claude_cost(settings.anthropic_model, in_tok, out_tok)
     apify = settings.apify_cost_per_reel if settings.reel_fetcher == "apify" else 0.0
-    geo = 0.0 if settings.geocoder == "nominatim" else settings.google_cost_per_place * places
+    if settings.geocoder == "nominatim":
+        geo = 0.0
+    elif settings.lazy_place_enrichment:
+        # One call per place we had to look up. Enrichment is billed later, if
+        # and when someone opens the place.
+        geo = settings.google_cost_per_search * searched
+    else:
+        geo = settings.google_cost_per_place * searched
+    saved = searched if places_saved is None else places_saved
     return {
         "model": settings.anthropic_model,
         "fetcher": settings.reel_fetcher,
         "geocoder": settings.geocoder,
+        "lazy_enrichment": settings.lazy_place_enrichment,
         "input_tokens": in_tok,
         "output_tokens": out_tok,
-        "places": places,
+        "places": saved,
+        # Places that cost a lookup. The gap between this and `places` is what
+        # the cache saved on this reel.
+        "places_searched": searched,
         "claude_usd": round(claude, 6),
         "fetch_usd": round(apify, 6),
         "geocode_usd": round(geo, 6),
@@ -161,10 +175,11 @@ def analyze_reel(reel_id: str, user_id: str, map_id: str | None = None) -> dict:
 
         started = time.monotonic()
         try:
-            count, in_tok, out_tok = _run_analysis(db, reel, user_id, target_map)
+            run = _run_analysis(db, reel, user_id, target_map)
+            count, in_tok, out_tok = run.saved, run.input_tokens, run.output_tokens
             reel.status = "done"
             reel.analyzed_at = datetime.now(timezone.utc)
-            reel.cost_detail = _cost_detail(count, in_tok, out_tok)
+            reel.cost_detail = _cost_detail(run.searched, in_tok, out_tok, places_saved=count)
             reel.cost_usd = round(reel.cost_detail["total_usd"], 4)
             db.commit()
         except UnsupportedReel as exc:
@@ -207,7 +222,21 @@ def _personal_map_id(db, user_id: str) -> str:
     return m.id
 
 
-def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int, int, int]:
+class _Analysis(NamedTuple):
+    """What one run produced and what it actually cost.
+
+    `saved` and `searched` differ whenever the cache helped, and keeping them
+    apart is the point: billing every place would report a saving that never
+    reaches the log.
+    """
+
+    saved: int
+    searched: int
+    input_tokens: int
+    output_tokens: int
+
+
+def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> _Analysis:
     data = get_fetcher(reel.platform).fetch(reel.url)
     reel.caption = data.caption
     reel.author_handle = data.author_handle
@@ -281,26 +310,137 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> tuple[int,
     single_venue_address = data.tagged_address if len(places) == 1 else None
 
     saved = 0
+    # Places that cost a lookup. Distinct from len(places): a cache hit is free,
+    # and charging for it would make the cost log fiction.
+    searched = 0
     for ep in places:
         # Inherit the reel-level city/country when a place doesn't name its own —
         # a "9 cafes in Dallas" reel rarely repeats the city per item.
         ep.city = ep.city or result.extraction.primary_city
         ep.country = ep.country or result.extraction.primary_country
 
-        # One flaky geocoding call must never fail the whole reel: fall back to
-        # an un-pinned place (still listed) and keep going.
-        try:
-            geo = geocode.geocode(ep, address_hint=single_venue_address)
-        except Exception:  # noqa: BLE001
-            log.warning("geocode raised for %r — saving without a pin", ep.name, exc_info=True)
-            geo = geocode.GeocodeResult(name=ep.name, city=ep.city, country=ep.country)
-
-        place = _upsert_place(db, ep, geo)
+        # Have we already resolved this restaurant for somebody else? Food reels
+        # cluster hard on the same venues, and the same place used to arrive
+        # over and over as a fresh pair of billed lookups.
+        place = _cached_place(db, ep)
+        if place is None and _geocode_recently_missed(db, ep):
+            # Known to find nothing. Save it un-pinned, as the lookup would.
+            place = _upsert_place(db, ep, geocode.GeocodeResult(
+                name=ep.name, city=ep.city, country=ep.country))
+        elif place is None:
+            # One flaky geocoding call must never fail the whole reel: fall back
+            # to an un-pinned place (still listed) and keep going.
+            try:
+                geo = geocode.geocode(ep, address_hint=single_venue_address)
+            except Exception:  # noqa: BLE001
+                log.warning("geocode raised for %r — saving without a pin", ep.name, exc_info=True)
+                geo = geocode.GeocodeResult(name=ep.name, city=ep.city, country=ep.country)
+            if geo.lat is None:
+                _record_geocode_miss(db, ep)
+            place = _upsert_place(db, ep, geo)
+            searched += 1
         _, created = _upsert_user_place(db, user_id, place, reel, ep, map_id)
         _bucket_collection(db, user_id, place)
         if created:
             saved += 1
-    return saved, result.input_tokens, result.output_tokens
+    return _Analysis(saved, searched, result.input_tokens, result.output_tokens)
+
+
+def _cached_place(db, ep) -> Place | None:
+    """A canonical place we already resolved that is certainly the same venue.
+
+    Deliberately narrow. A wrong hit merges two different restaurants for
+    everyone, permanently, and that is far worse than paying for one more
+    lookup — so this is stricter than the threshold used to accept a Google
+    candidate, requires the same normalised city, and only ever reuses a place
+    that is already pinned. When it isn't sure, it returns None and we pay.
+    """
+    if not settings.place_cache_enabled:
+        return None
+    if not geocode.is_real_place_name(ep.name) or not ep.city:
+        return None
+
+    city_names = geocode.candidate_city_names(ep.city)
+    if not city_names:
+        return None
+    city_ids = list(db.scalars(select(City.id).where(City.name.in_(city_names))))
+    if not city_ids:
+        return None
+
+    name_key = geocode.match_key(ep.name)
+    if not name_key:
+        return None
+
+    best, best_score = None, 0.0
+    for cand in db.scalars(
+        select(Place).where(
+            Place.city_id.in_(city_ids),
+            # Never reuse a place the geocoder failed on: it saves nothing and
+            # spreads that failure to everyone who shares the reel later.
+            Place.lat.isnot(None),
+            Place.external_place_id.isnot(None),
+            # A bar and a bakery both called Sunrise are different businesses,
+            # and one name can genuinely cover two venues in a city. Matching
+            # only within a category is what keeps that from merging them.
+            Place.category == ep.category,
+        )
+    ):
+        score = geocode.name_similarity(ep.name, cand.name)
+        if score > best_score:
+            best, best_score = cand, score
+
+    if best is None or best_score < settings.place_cache_min_similarity:
+        return None
+
+    log.info("place cache hit: %r -> %r (%.2f) in %s — no lookup",
+             ep.name, best.name, best_score, ep.city)
+    return best
+
+
+def _record_geocode_miss(db, ep) -> None:
+    """Remember that this name found nothing here.
+
+    A viral reel naming a venue the geocoder doesn't know used to cost a fresh
+    billed search for every person who shared it, and the answer was "no" every
+    time.
+    """
+    name_key = geocode.match_key(ep.name)
+    city_key = geocode.match_key(geocode.normalize_city(ep.city))
+    if not name_key or not city_key:
+        return
+    existing = db.scalar(
+        select(GeocodeMiss).where(
+            GeocodeMiss.name_key == name_key, GeocodeMiss.city_key == city_key
+        )
+    )
+    if existing is None:
+        db.add(GeocodeMiss(name_key=name_key, city_key=city_key))
+    else:
+        # Refresh the clock: it is still missing, so start the window again.
+        existing.created_at = datetime.now(timezone.utc)
+    db.flush()
+
+
+def _geocode_recently_missed(db, ep) -> bool:
+    name_key = geocode.match_key(ep.name)
+    city_key = geocode.match_key(geocode.normalize_city(ep.city))
+    if not name_key or not city_key:
+        return False
+    row = db.scalar(
+        select(GeocodeMiss).where(
+            GeocodeMiss.name_key == name_key, GeocodeMiss.city_key == city_key
+        )
+    )
+    if row is None:
+        return False
+    seen = row.created_at
+    if seen.tzinfo is None:  # SQLite hands back naive datetimes
+        seen = seen.replace(tzinfo=timezone.utc)
+    fresh = datetime.now(timezone.utc) - seen < timedelta(days=settings.geocode_miss_ttl_days)
+    if fresh:
+        log.info("geocode miss cache: %r in %s searched recently — skipping lookup",
+                 ep.name, ep.city)
+    return fresh
 
 
 def _upsert_place(db, ep, geo) -> Place:
@@ -347,6 +487,8 @@ def _upsert_place(db, ep, geo) -> Place:
     place.business_status = geo.business_status
     place.google_maps_url = geo.google_maps_url
     place.last_verified_at = datetime.now(timezone.utc)
+    if geo.enriched and geo.lat is not None:
+        place.enriched_at = datetime.now(timezone.utc)
     place.city = city
     db.flush()
     return place
