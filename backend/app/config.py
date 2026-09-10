@@ -139,6 +139,14 @@ class Settings(BaseSettings):
     # forever.
     place_enrichment_stale_days: int = 30
 
+    # --- Vibe search ---
+    # How many saved places one search may consider. The whole candidate set
+    # goes into the prompt, so this is the cost ceiling per search: roughly 40
+    # tokens a place. Scoped to one map by default, which is what people mean
+    # anyway, so the cap is a backstop rather than the usual case.
+    vibe_search_max_places: int = 250
+    vibe_search_per_minute: int = 10
+
     # What the thing costs to exist, as opposed to what each reel costs. Per-reel
     # spend is currently a rounding error next to hosting, so a cost view that
     # only counts reels answers the wrong question. JSON so it can be edited on

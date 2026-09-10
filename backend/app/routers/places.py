@@ -13,8 +13,16 @@ from app.routers.moderation import blocked_ids
 from app.db import get_db
 from app.maps import member_map_ids, require_member
 from app.models import City, Collection, Map, MapMember, Place, ReelSource, User, UserPlace
-from app.schemas import CollectionOut, SetPlaceLocationRequest, UserPlaceOut
-from worker import geocode
+from app.schemas import (
+    CollectionOut,
+    SetPlaceLocationRequest,
+    UserPlaceOut,
+    VibeSearchMatch,
+    VibeSearchRequest,
+    VibeSearchResponse,
+)
+from app.ratelimit import limit_vibe_search
+from worker import geocode, vibe_search
 from worker.geocode import region_from_address
 
 router = APIRouter(tags=["places"])
@@ -267,3 +275,85 @@ def _enrichment_is_fresh(place: Place) -> bool:
         seen = seen.replace(tzinfo=timezone.utc)
     age = datetime.now(timezone.utc) - seen
     return age < timedelta(days=settings.place_enrichment_stale_days)
+
+
+@router.post("/places/search", response_model=VibeSearchResponse)
+def search_places_by_vibe(
+    body: VibeSearchRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> VibeSearchResponse:
+    """Find saved places by what they feel like rather than what they're called.
+
+    The app filters by name as you type, instantly and offline. This is the
+    other half — "somewhere quiet I can work", "impressive but not stuffy" —
+    which is compositional and needs something that can read the descriptions
+    rather than index them.
+
+    Scoped to one map by default. That is what people mean when they search
+    while looking at a map, and it also keeps the prompt small, since every
+    candidate place is part of the input.
+    """
+    limit_vibe_search(user.id)
+
+    if body.map_id:
+        require_member(db, body.map_id, user.id)
+        map_ids = [body.map_id]
+    else:
+        map_ids = member_map_ids(db, user.id)
+    if not map_ids:
+        return VibeSearchResponse(query=body.query, matches=[], considered=0)
+
+    hidden = blocked_ids(db, user.id)
+    rows = db.scalars(
+        select(UserPlace)
+        .options(joinedload(UserPlace.place).joinedload(Place.city))
+        .where(UserPlace.map_id.in_(map_ids))
+        .order_by(UserPlace.saved_at.desc())
+        .limit(settings.vibe_search_max_places)
+    ).unique().all()
+
+    candidates = [
+        _catalogue_entry(up) for up in rows
+        if up.place is not None and up.user_id not in hidden
+    ]
+    if not candidates:
+        return VibeSearchResponse(query=body.query, matches=[], considered=0)
+
+    try:
+        result = vibe_search.search(body.query, candidates)
+    except Exception:  # noqa: BLE001
+        # Search failing should not look like "you have no places". The app
+        # falls back to its own name filter on an error.
+        raise HTTPException(
+            status_code=503,
+            detail="Couldn't run that search just now. Try again in a moment.",
+        )
+
+    return VibeSearchResponse(
+        query=body.query,
+        matches=[VibeSearchMatch(place_id=m.place_id, reason=m.reason)
+                 for m in result.matches],
+        considered=len(candidates),
+    )
+
+
+def _catalogue_entry(up: UserPlace) -> dict:
+    """What the model gets to see about one saved place.
+
+    Trimmed deliberately: the description is the richest signal and also the
+    longest, and this is multiplied by every place a person has saved.
+    """
+    place = up.place
+    description = (up.description or "").strip()
+    return {
+        "id": up.id,
+        "name": place.name,
+        "cuisine": place.cuisine,
+        "category": place.category,
+        "city": place.city.name if place.city else up.city,
+        "vibes": up.vibe or [],
+        "price_level": place.price_level or up.price_level_ai,
+        "rating": place.rating,
+        "description": description[:220] if description else None,
+    }

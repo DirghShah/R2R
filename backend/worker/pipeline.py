@@ -290,6 +290,9 @@ def _run_analysis(db, reel: ReelSource, user_id: str, map_id: str) -> _Analysis:
     # filter chips and pin colours — which is the mess this replaced.
     for ep in places:
         ep.cuisine = extract.normalize_cuisine(ep.cuisine)
+        # Same treatment, same reason: vibe search and the filter chips both
+        # reason over these tags, so one idea must not arrive as three strings.
+        ep.vibe = extract.normalize_vibes(ep.vibe)
 
     # Category filter. Done per-place rather than per-reel on purpose: a "best of
     # Dallas" reel with five cafes and one hotel should still save the cafes.

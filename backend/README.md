@@ -109,6 +109,31 @@ it on explicitly. It used to key off `ENVIRONMENT`, which defaults to `dev` —
 one forgotten variable on a new deploy left it wide open, and nothing about a
 healthy-looking service would have shown it.
 
+### Vibe search
+
+`POST /places/search` finds saved places by what they feel like — "somewhere
+quiet I can work", "impressive but not stuffy". The name filter in the app stays
+instant and offline; this runs only when someone submits, because it is a model
+call.
+
+No embeddings and no vector store. A person's saved places number in the tens or
+low hundreds, so the whole candidate set fits in one prompt, and a model that
+can read the descriptions beats cosine similarity over them. It also means no
+second vendor and no index to keep in sync.
+
+Two things it must get right, both covered by tests: ids returned by the model
+are checked against the ids that went in, because a model asked for an
+identifier will occasionally invent one; and an empty result is a real answer,
+since a wrong match teaches people the search doesn't work.
+
+The ceiling is the data. It can only find what a reel actually said, which is
+why `vibe` is a closed list (`worker/extract.py:VIBES`) — free text gave one
+idea three spellings and nothing matched anything.
+
+Scoped to one map by default: that is what people mean when they search while
+looking at a map, and every candidate place is part of the prompt, so scope is
+also the cost control. `VIBE_SEARCH_MAX_PLACES` is the backstop.
+
 ### Cost control
 
 Two Google calls used to run for every extracted place, every time. Three

@@ -292,6 +292,27 @@ public struct MapMemberSummary: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+public struct VibeSearchResponse: Codable, Sendable {
+    public let query: String
+    /// Best-first. Empty is a real answer, not a failure — nothing you saved
+    /// fits what you asked for.
+    public let matches: [Match]
+    /// How many saved places were considered, for an honest empty state.
+    public let considered: Int
+
+    public struct Match: Codable, Identifiable, Sendable {
+        public var id: String { placeID }
+        public let placeID: String
+        /// One clause saying what matched, shown under the result.
+        public let reason: String
+
+        enum CodingKeys: String, CodingKey {
+            case reason
+            case placeID = "place_id"
+        }
+    }
+}
+
 /// Broadcast when a refresh fails and the session is genuinely gone, so the app
 /// can show the sign-in screen instead of silently rendering an empty map.
 public enum SessionExpiry {

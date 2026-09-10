@@ -83,6 +83,117 @@ _CUISINE_ALIASES = {
     "portuguese": "European", "ethiopian": "African", "moroccan": "African",
 }
 
+# Atmosphere tags, closed for the same reason cuisine is: free text gave one
+# idea three spellings — "cozy", "intimate", "chill vibes" — so nothing matched
+# anything reliably. These are what vibe search reasons over and what the filter
+# chips are built from, so consistency is the whole value.
+VIBES = [
+    # Atmosphere
+    "Cozy", "Lively", "Quiet", "Romantic", "Aesthetic", "No-Frills",
+    "Upscale", "Divey",
+    # Setting
+    "Outdoor Seating", "Rooftop", "Waterfront", "Garden", "Great View",
+    "Hidden Gem",
+    # Occasion
+    "Date Spot", "Good For Groups", "Solo-Friendly", "Work-Friendly",
+    "Family-Friendly", "Late Night", "Brunch",
+    # Practical
+    "Quick Bite", "Worth The Wait", "Reservations Needed", "Cash Only",
+]
+
+_VIBE_BY_KEY = {v.lower(): v for v in VIBES}
+
+_VIBE_ALIASES = {
+    "intimate": "Romantic", "chill": "Cozy", "chill vibes": "Cozy",
+    "warm": "Cozy", "comfy": "Cozy", "homey": "Cozy", "snug": "Cozy",
+    "buzzy": "Lively", "bustling": "Lively", "energetic": "Lively",
+    "vibrant": "Lively", "loud": "Lively", "packed": "Lively",
+    "calm": "Quiet", "peaceful": "Quiet", "relaxed": "Quiet",
+    "low key": "Quiet", "low-key": "Quiet", "mellow": "Quiet",
+    "date night": "Date Spot", "romantic dinner": "Date Spot",
+    "instagrammable": "Aesthetic", "photogenic": "Aesthetic",
+    "pretty": "Aesthetic", "beautiful": "Aesthetic", "trendy": "Aesthetic",
+    "hip": "Aesthetic", "stylish": "Aesthetic", "design": "Aesthetic",
+    "hole in the wall": "No-Frills", "hole-in-the-wall": "No-Frills",
+    "casual": "No-Frills", "unpretentious": "No-Frills", "counter service": "No-Frills",
+    "fancy": "Upscale", "fine dining": "Upscale", "elegant": "Upscale",
+    "classy": "Upscale", "special occasion": "Upscale",
+    "dive": "Divey", "dive bar": "Divey", "gritty": "Divey",
+    "patio": "Outdoor Seating", "terrace": "Outdoor Seating",
+    "al fresco": "Outdoor Seating", "sidewalk seating": "Outdoor Seating",
+    "outdoor": "Outdoor Seating", "backyard": "Garden", "courtyard": "Garden",
+    "rooftop bar": "Rooftop", "roof": "Rooftop",
+    "waterside": "Waterfront", "by the water": "Waterfront",
+    "riverside": "Waterfront", "beachfront": "Waterfront", "seaside": "Waterfront",
+    "canal": "Waterfront", "harbor": "Waterfront", "harbour": "Waterfront",
+    "view": "Great View", "views": "Great View", "skyline": "Great View",
+    "scenic": "Great View", "panoramic": "Great View",
+    "speakeasy": "Hidden Gem", "secret": "Hidden Gem", "underrated": "Hidden Gem",
+    "local favorite": "Hidden Gem", "local favourite": "Hidden Gem",
+    "tucked away": "Hidden Gem",
+    "groups": "Good For Groups", "group dining": "Good For Groups",
+    "sharing": "Good For Groups", "big tables": "Good For Groups",
+    "solo": "Solo-Friendly", "bar seating": "Solo-Friendly",
+    "eat alone": "Solo-Friendly", "counter seating": "Solo-Friendly",
+    "study spot": "Work-Friendly", "laptop friendly": "Work-Friendly",
+    "wifi": "Work-Friendly", "good for working": "Work-Friendly",
+    "study": "Work-Friendly", "remote work": "Work-Friendly",
+    "kid friendly": "Family-Friendly", "kids": "Family-Friendly",
+    "family": "Family-Friendly",
+    "open late": "Late Night", "after hours": "Late Night",
+    "night owl": "Late Night", "24 hours": "Late Night",
+    "breakfast": "Brunch", "morning": "Brunch", "weekend brunch": "Brunch",
+    "grab and go": "Quick Bite", "takeaway": "Quick Bite", "fast": "Quick Bite",
+    "counter": "Quick Bite", "on the go": "Quick Bite",
+    "long line": "Worth The Wait", "queue": "Worth The Wait",
+    "line out the door": "Worth The Wait", "always busy": "Worth The Wait",
+    "book ahead": "Reservations Needed", "reservation": "Reservations Needed",
+    "reservations": "Reservations Needed", "hard to get in": "Reservations Needed",
+    "cash": "Cash Only", "no cards": "Cash Only",
+}
+
+
+def normalize_vibe(value: str | None) -> str | None:
+    """Snap one atmosphere tag onto the closed list, or drop it.
+
+    Unlike cuisine there is no "Other" bucket: an unrecognised vibe tag carries
+    no meaning for search or filtering, and keeping it would put a chip on the
+    map that matches nothing. Dropping is the honest outcome.
+    """
+    if not value:
+        return None
+    key = " ".join(value.strip().lower().split())
+    if not key:
+        return None
+    if key in _VIBE_BY_KEY:
+        return _VIBE_BY_KEY[key]
+    if key in _VIBE_ALIASES:
+        return _VIBE_ALIASES[key]
+    # "cozy corner spot", "great for groups" — longest first so "Good For
+    # Groups" beats a bare "groups".
+    for canonical in sorted(VIBES, key=len, reverse=True):
+        if canonical.lower() in key:
+            return canonical
+    for alias, canonical in sorted(_VIBE_ALIASES.items(), key=lambda kv: -len(kv[0])):
+        if alias in key:
+            return canonical
+    return None
+
+
+def normalize_vibes(values: list[str] | None) -> list[str]:
+    """The whole list, deduped, order preserved, capped at four.
+
+    Capped because a place tagged with everything is tagged with nothing, and
+    the model will happily produce eight once it has a list to choose from.
+    """
+    out: list[str] = []
+    for v in values or []:
+        canonical = normalize_vibe(v)
+        if canonical and canonical not in out:
+            out.append(canonical)
+    return out[:4]
+
+
 _CUISINE_BY_KEY = {c.lower(): c for c in CUISINES}
 
 
@@ -144,7 +255,14 @@ class ExtractedPlace(BaseModel):
     )
     vibe: list[str] = Field(
         default_factory=list,
-        description="2-4 atmosphere tags from what the reel shows: e.g. 'cozy', 'study spot', 'aesthetic'.",
+        description=(
+            "2-4 atmosphere tags, chosen VERBATIM from this list and nothing else: "
+            + ", ".join(VIBES) + ". "
+            "Pick only what the reel actually shows or says — do not guess from the "
+            "cuisine. Prefer specific over generic: a rooftop with a skyline shot is "
+            "'Rooftop' and 'Great View', not 'Aesthetic'. Return fewer tags rather "
+            "than padding to four."
+        ),
     )
     tips: list[str] = Field(
         default_factory=list,

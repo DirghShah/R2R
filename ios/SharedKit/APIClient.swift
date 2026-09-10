@@ -310,6 +310,17 @@ public actor APIClient {
         try await requestVoid("/places/\(id)", method: "DELETE")
     }
 
+    /// Search saved places by what they feel like, not what they're called.
+    ///
+    /// "Somewhere quiet I can work", "impressive but not stuffy". The name
+    /// filter in the app stays instant and offline; this is the other half,
+    /// and it costs a model call, so it runs only when someone submits.
+    public func vibeSearch(query: String, mapID: String?) async throws -> VibeSearchResponse {
+        struct Body: Encodable { let query: String; let map_id: String? }
+        return try await request("/places/search", method: "POST",
+                                 body: Body(query: query, map_id: mapID))
+    }
+
     /// Ask the server to fill in rating, photos and hours for one place.
     ///
     /// Ratings and photos are a second, separately billed lookup that buys

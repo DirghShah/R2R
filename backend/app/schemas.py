@@ -203,6 +203,27 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class VibeSearchRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=200)
+    # Scope. Defaults to the map the user is looking at, which is both what
+    # they mean and what keeps the prompt small.
+    map_id: str | None = None
+
+    _clean_query = field_validator("query")(_require_visible_text)
+
+
+class VibeSearchMatch(BaseModel):
+    place_id: str
+    reason: str
+
+
+class VibeSearchResponse(BaseModel):
+    query: str
+    # Ordered best-first. Empty is a real answer, not a failure.
+    matches: list[VibeSearchMatch]
+    considered: int
+
+
 class UpdateMeRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=60)
 

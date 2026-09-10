@@ -16,6 +16,15 @@ struct CityListsScreen: View {
     @State private var pendingDelete: CachedPlace?
     @State private var deleteError: String?
 
+    // Vibe search. Typing filters by name instantly and offline, as it always
+    // has; submitting asks the server what matches the *feeling*. Keeping them
+    // separate means the cheap path stays instant and the model call only runs
+    // when somebody actually asks a question.
+    @State private var vibeQuery: String?
+    @State private var vibeMatches: [VibeSearchResponse.Match] = []
+    @State private var vibeSearching = false
+    @State private var vibeError: String?
+
     enum SortMode: String, CaseIterable, Identifiable {
         case recent = "Recent", rating = "Top rated", name = "Name"
         var id: String { rawValue }
@@ -37,13 +46,26 @@ struct CityListsScreen: View {
     }
 
     private var filtered: [CachedPlace] {
+        // A vibe result replaces the name filter entirely and keeps the
+        // server's ranking — re-sorting it would throw away the ordering that
+        // is the point of asking.
+        if vibeQuery != nil {
+            let byID = Dictionary(uniqueKeysWithValues: places.map { ($0.id, $0) })
+            return vibeMatches.compactMap { byID[$0.placeID] }
+        }
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return places }
         return places.filter {
             $0.name.lowercased().contains(q)
                 || ($0.cuisine?.lowercased().contains(q) ?? false)
                 || ($0.cityLabel?.lowercased().contains(q) ?? false)
+                || ($0.vibe.contains { v in v.lowercased().contains(q) })
         }
+    }
+
+    /// The clause the server gave for why this place matched, if it did.
+    private func vibeReason(_ place: CachedPlace) -> String? {
+        vibeMatches.first { $0.placeID == place.id }?.reason
     }
 
     private func withinCitySort(_ a: CachedPlace, _ b: CachedPlace) -> Bool {
@@ -84,6 +106,7 @@ struct CityListsScreen: View {
                                     places: city.places,
                                     visitedIDs: visitedIDs,
                                     userLocation: location.current,
+                                    reasonFor: vibeReason,
                                     expanded: expanded.contains(city.name),
                                     toggle: { toggle(city.name) },
                                     openPlace: { Haptics.tap(); selected = $0 },
@@ -164,27 +187,109 @@ struct CityListsScreen: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(.inkMuted)
-            TextField("", text: $searchText, prompt: Text("Search places, cuisines, cities").foregroundColor(.inkMuted))
-                .font(.system(size: 14)).foregroundStyle(.ink)
-                .autocorrectionDisabled().textInputAutocapitalization(.never)
-            if !searchText.isEmpty {
-                Button { searchText = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.inkMuted)
-                }.buttonStyle(.plain)
+        VStack(spacing: 8) {
+            HStack(spacing: 9) {
+                if vibeSearching {
+                    ProgressView().controlSize(.small).frame(width: 15)
+                } else {
+                    Image(systemName: vibeQuery == nil ? "magnifyingglass" : "sparkles")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(vibeQuery == nil ? Color.inkMuted : .appAccent)
+                        .frame(width: 15)
+                }
+                TextField("", text: $searchText,
+                          prompt: Text("Search, or describe a vibe").foregroundColor(.inkMuted))
+                    .font(.system(size: 14)).foregroundStyle(.ink)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .submitLabel(.search)
+                    // Return runs the vibe search. Typing keeps filtering by
+                    // name, so nothing gets slower and nothing costs anything
+                    // until a question is actually asked.
+                    .onSubmit { Task { await runVibeSearch() } }
+                    .onChange(of: searchText) { _, _ in clearVibeResults() }
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                        clearVibeResults()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.inkMuted)
+                    }.buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .card(14)
+
+            if let vibeError {
+                Text(vibeError)
+                    .font(.system(size: 12)).foregroundStyle(.closedRed)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if vibeQuery != nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles").font(.system(size: 10, weight: .semibold))
+                    Text(vibeMatches.isEmpty
+                         ? "Nothing saved matches that yet"
+                         : "\(vibeMatches.count) match\(vibeMatches.count == 1 ? "" : "es") for what you described")
+                    Spacer()
+                    Button("Clear") { clearVibeResults() }
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .font(.system(size: 12)).foregroundStyle(.inkSecondary)
+            } else if !searchText.isEmpty {
+                // The hint only appears once there is something to submit, so
+                // it never sits there as decoration.
+                Text("Press return to search by vibe — try “quiet enough to work”")
+                    .font(.system(size: 12)).foregroundStyle(.inkMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .card(14)
         .padding(.horizontal, 22).padding(.bottom, 12)
+    }
+
+    private func clearVibeResults() {
+        guard vibeQuery != nil || vibeError != nil else { return }
+        vibeQuery = nil
+        vibeMatches = []
+        vibeError = nil
+    }
+
+    private func runVibeSearch() async {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 2 else { return }
+        vibeSearching = true
+        vibeError = nil
+        defer { vibeSearching = false }
+        do {
+            let result = try await APIClient.shared.vibeSearch(query: q, mapID: maps.currentID)
+            vibeMatches = result.matches
+            vibeQuery = q
+            Haptics.success()
+        } catch {
+            // Never render a failure as "no results" — that reads as though
+            // the places themselves are gone.
+            vibeError = "Couldn't search that just now. Your name search still works."
+            vibeQuery = nil
+            vibeMatches = []
+        }
     }
 
     private var noResults: some View {
         VStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").font(.title2).foregroundStyle(.inkMuted)
+            Image(systemName: vibeQuery == nil ? "magnifyingglass" : "sparkles")
+                .font(.title2).foregroundStyle(.inkMuted)
             Text("No matches").font(.display(17, .semibold)).foregroundStyle(.ink)
-            Text("Nothing saved matches “\(searchText)”.").font(.callout).foregroundStyle(.inkSecondary)
+            if vibeQuery != nil {
+                // The honest version. Vibe search only knows what a reel
+                // actually said, so an empty result usually means nobody
+                // described a saved place that way — not that the search broke.
+                Text("None of your saved places were described that way. Try a different feeling, or fewer conditions.")
+                    .font(.callout).foregroundStyle(.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 32)
+            } else {
+                Text("Nothing saved matches “\(searchText)”.")
+                    .font(.callout).foregroundStyle(.inkSecondary)
+            }
         }
         .padding(.top, 40)
     }
@@ -216,6 +321,9 @@ private struct CityRow: View {
     let places: [CachedPlace]
     let visitedIDs: Set<String>
     let userLocation: CLLocation?
+    /// Why each place matched a vibe search, when one is showing. Saying what
+    /// matched is most of what makes the answer trustworthy.
+    var reasonFor: (CachedPlace) -> String? = { _ in nil }
     let expanded: Bool
     let toggle: () -> Void
     let openPlace: (CachedPlace) -> Void
@@ -264,6 +372,7 @@ private struct CityRow: View {
                         PlaceListCard(place: place, rank: idx + 1,
                                       visited: visitedIDs.contains(place.id),
                                       userLocation: userLocation,
+                                      matchReason: reasonFor(place),
                                       open: { openPlace(place) },
                                       delete: { deletePlace(place) },
                                       showsAttribution: showsAttribution)
@@ -282,6 +391,7 @@ private struct PlaceListCard: View {
     let rank: Int
     let visited: Bool
     let userLocation: CLLocation?
+    var matchReason: String? = nil
     let open: () -> Void
     let delete: () -> Void
     var showsAttribution: Bool = false
@@ -335,6 +445,21 @@ private struct PlaceListCard: View {
                         .font(.system(size: 13)).foregroundStyle(.inkSecondary).lineLimit(1)
                     // Say it plainly rather than letting the place quietly miss
                     // the map with no explanation.
+                    // What matched, when this row came from a vibe search.
+                    // Without it the answer is a list you have to take on
+                    // trust; with it you can see the search understood you.
+                    if let matchReason, !matchReason.isEmpty {
+                        HStack(alignment: .top, spacing: 5) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 9, weight: .semibold))
+                                .padding(.top, 2)
+                            Text(matchReason)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.appAccent)
+                        .padding(.top, 3)
+                    }
                     if place.isUnmapped {
                         Label("No map location", systemImage: "mappin.slash")
                             .font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)

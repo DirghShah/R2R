@@ -167,6 +167,44 @@ const faqs = [
     </div>
   </section>
 
+  <hr class="rule" />
+
+  <!-- ── Vibe search ──────────────────────────────────────────────────── -->
+  <section class="section vibe" id="vibe">
+    <div class="wrap wrap--narrow" data-reveal>
+      <p class="label">Search</p>
+      <h2>You don't remember the name. You remember the feeling.</h2>
+      <p class="lead">
+        Every other app makes you recall what a place was called. Nosh lets you
+        describe what you're in the mood for, and searches what the reels
+        actually said about the places you saved.
+      </p>
+    </div>
+
+    <div class="wrap queries">
+      <figure class="q" data-reveal>
+        <blockquote>“somewhere quiet I can actually work”</blockquote>
+        <figcaption>Finds the ones a reel called a study spot, not every café.</figcaption>
+      </figure>
+      <figure class="q" data-reveal>
+        <blockquote>“impressive but not stuffy, for a second date”</blockquote>
+        <figcaption>Reads the description, not just the price bracket.</figcaption>
+      </figure>
+      <figure class="q" data-reveal>
+        <blockquote>“cheap late-night food near the water”</blockquote>
+        <figcaption>Three conditions at once, which keyword search can't do.</figcaption>
+      </figure>
+    </div>
+
+    <div class="wrap wrap--narrow" data-reveal>
+      <p class="fineprint">
+        It only knows what the reels said. A place nobody described as
+        waterfront won't appear for “near the water” — and it tells you why each
+        result matched, so you can see it understood you.
+      </p>
+    </div>
+  </section>
+
   <!-- ── Shared maps ──────────────────────────────────────────────────── -->
   <section class="section shared" id="shared">
     <div class="wrap shared-in">
@@ -239,6 +277,37 @@ const faqs = [
 </Base>
 
 <style>
+  /* Vibe search: the queries are the argument, so they get to be the design. */
+  .vibe .queries {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    margin: 42px auto 34px;
+  }
+  .vibe .q {
+    margin: 0;
+    padding: 22px 20px;
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+  }
+  .vibe .q blockquote {
+    margin: 0 0 10px;
+    font-family: var(--font-display);
+    font-size: 1.18rem;
+    line-height: 1.35;
+    color: var(--ink);
+  }
+  .vibe .q figcaption {
+    font-size: 0.86rem;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+  .vibe .fineprint {
+    font-size: 0.86rem;
+    color: var(--ink-3);
+    max-width: 52ch;
+  }
+
   /* Hero ---------------------------------------------------------------- */
   .hero { padding-block: clamp(3.5rem, 9vw, 7rem) clamp(4rem, 10vw, 8rem); }
   .hero-in {

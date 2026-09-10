@@ -71,3 +71,10 @@ def limit_reel_submission(user_id: str) -> None:
 def limit_auth(request: Request) -> None:
     """Per-IP ceiling on sign-in, which is unauthenticated by definition."""
     _hit(f"auth:{_client_ip(request)}", settings.rate_limit_auth_per_hour)
+
+
+def limit_vibe_search(user_id: str) -> None:
+    """Each search is a model call, so a stuck client retrying in a loop is a
+    bill rather than just noise. Per minute, not per hour: searching is
+    interactive, and an hourly bucket would lock someone out mid-session."""
+    _hit(f"vibe:{user_id}", settings.vibe_search_per_minute, window_seconds=60)
