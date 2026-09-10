@@ -7,14 +7,14 @@ const steps = [
   {
     n: '01',
     title: 'Share the reel',
-    body: 'From Instagram, TikTok or YouTube, hit Share and pick Nosh. That is the entire interaction. No copying links, no switching apps.',
+    body: 'From Instagram, TikTok or YouTube, hit Share and pick Nosh. Or paste the link straight into the app if you already copied it. Either way, that is the entire interaction.',
     shot: 'Instagram share sheet with Nosh visible in the row',
   },
   {
     n: '02',
     title: 'It watches the reel properly',
     body: 'The caption, the text burned onto the screen, the tagged accounts, and what the creator actually says out loud. Most places live in the on-screen text, which is why reading only the caption misses them.',
-    shot: 'Analyzing state — progress card with the reel thumbnail',
+    shot: 'The share confirmation toast, over Instagram',
   },
   {
     n: '03',
@@ -48,7 +48,11 @@ const features = [
 const faqs = [
   {
     q: 'Which apps does it work with?',
-    a: 'Instagram Reels, TikTok and YouTube Shorts. Share from any of them.',
+    a: 'Instagram Reels, TikTok and YouTube Shorts. Share from any of them, or paste a link you already copied.',
+  },
+  {
+    q: 'Do I have to use the share sheet?',
+    a: 'No. The Add tab takes a pasted link, which is often easier when a friend sends you one in a message. Both routes do exactly the same thing.',
   },
   {
     q: 'Why does it take about thirty seconds?',
@@ -83,7 +87,7 @@ const faqs = [
       <div class="hero-copy">
         <h1 data-reveal>Every food reel you saved, on one map.</h1>
         <p class="lead" data-reveal>
-          Share a reel to Nosh. It reads the caption, the text on screen and what
+          Share or paste a reel. It reads the caption, the text on screen and what
           is said out loud, then pins every place it mentions — with the address,
           the hours and what to order.
         </p>
