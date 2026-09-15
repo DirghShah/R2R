@@ -39,6 +39,12 @@ final class CachedPlace {
     var tips: [String]
     var whatToOrder: [String]
     var vibe: [String]
+    /// Added by searching rather than from a reel, so the detail screen says
+    /// "Added by you" instead of showing an empty source card.
+    var addedManually: Bool = false
+    /// Public reels that mention this place, from anyone's analysis. Stored
+    /// encoded for the same reason hours are: SwiftData wants a scalar.
+    var reelMentionsData: Data?
     var instagramHandle: String?
     var website: String?
     var hoursHint: String?
@@ -56,6 +62,7 @@ final class CachedPlace {
         locationSource: String? = nil, photos: [String] = [], hoursData: Data? = nil, utcOffsetMinutes: Int? = nil,
         reelURL: String?, summary: String?,
         tips: [String], whatToOrder: [String], vibe: [String],
+        addedManually: Bool = false, reelMentionsData: Data? = nil,
         instagramHandle: String?, website: String?, hoursHint: String?,
         priceLevelAI: Int?, city: String?, savedAt: Date
     ) {
@@ -71,6 +78,8 @@ final class CachedPlace {
         self.photos = photos; self.hoursData = hoursData; self.utcOffsetMinutes = utcOffsetMinutes
         self.reelURL = reelURL; self.summary = summary
         self.tips = tips; self.whatToOrder = whatToOrder; self.vibe = vibe
+        self.addedManually = addedManually
+        self.reelMentionsData = reelMentionsData
         self.instagramHandle = instagramHandle; self.website = website
         self.hoursHint = hoursHint; self.priceLevelAI = priceLevelAI
         self.city = city; self.savedAt = savedAt
@@ -93,6 +102,8 @@ final class CachedPlace {
             utcOffsetMinutes: dto.place.utcOffsetMinutes,
             reelURL: dto.reelURL, summary: dto.description,
             tips: dto.tips ?? [], whatToOrder: dto.whatToOrder ?? [], vibe: dto.vibe ?? [],
+            addedManually: dto.addedManually,
+            reelMentionsData: try? JSONEncoder().encode(dto.seenInReels),
             instagramHandle: dto.instagramHandle, website: dto.website,
             hoursHint: dto.hoursHint, priceLevelAI: dto.priceLevelAI,
             city: dto.city, savedAt: dto.savedAt
@@ -128,6 +139,8 @@ final class CachedPlace {
         tips = dto.tips ?? []
         whatToOrder = dto.whatToOrder ?? []
         vibe = dto.vibe ?? []
+        addedManually = dto.addedManually
+        reelMentionsData = try? JSONEncoder().encode(dto.seenInReels)
         instagramHandle = dto.instagramHandle
         website = dto.website
         hoursHint = dto.hoursHint
@@ -210,6 +223,13 @@ final class CachedPlace {
 
     /// First Google photo, if any.
     var firstPhotoURL: URL? { photos.first.flatMap { URL(string: $0) } }
+
+    /// Reels other people analysed that mention this place. Why a place you
+    /// merely searched for can arrive already knowing what to order.
+    var reelMentions: [ReelMention] {
+        guard let reelMentionsData else { return [] }
+        return (try? JSONDecoder().decode([ReelMention].self, from: reelMentionsData)) ?? []
+    }
 
     func distanceMeters(from user: CLLocation?) -> Double? {
         guard let user, let c = coordinate else { return nil }

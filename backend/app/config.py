@@ -147,6 +147,20 @@ class Settings(BaseSettings):
     vibe_search_max_places: int = 250
     vibe_search_per_minute: int = 10
 
+    # --- First run ---
+    # The reel behind "Try an example". It must already be analysed, so the
+    # onboarding costs nothing: the backend recognises it and copies the stored
+    # places across without fetching, extracting or geocoding anything. A
+    # setting rather than a constant so it can be swapped without a rebuild.
+    example_reel_url: str | None = None
+
+    # --- Adding a place by searching for it ---
+    # Autocomplete is about a tenth of a cent a call, which is what makes live
+    # results affordable; a full text search is ten times that. So: suggest
+    # while typing, resolve once on the place actually chosen.
+    google_cost_per_autocomplete: float = 0.003
+    place_search_per_minute: int = 30
+
     # What the thing costs to exist, as opposed to what each reel costs. Per-reel
     # spend is currently a rounding error next to hosting, so a cost view that
     # only counts reels answers the wrong question. JSON so it can be edited on

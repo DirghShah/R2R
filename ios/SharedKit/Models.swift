@@ -89,9 +89,43 @@ public struct SavedPlace: Codable, Identifiable, Hashable, Sendable {
     public let priceLevelAI: Int?
     public let confidence: Double?
     public let savedAt: Date
+    /// Public reels that mention this place, from anyone's analysis. Empty for
+    /// a place nobody has shared, which is most of them early on.
+    public let seenInReels: [ReelMention]
+    /// Added by searching rather than from a reel, so the detail screen can
+    /// say so instead of showing an empty source card.
+    public let addedManually: Bool
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        place = try c.decode(Place.self, forKey: .place)
+        mapID = try c.decode(String.self, forKey: .mapID)
+        addedByID = try c.decodeIfPresent(String.self, forKey: .addedByID)
+        addedByName = try c.decodeIfPresent(String.self, forKey: .addedByName)
+        addedByColor = try c.decodeIfPresent(String.self, forKey: .addedByColor)
+        city = try c.decodeIfPresent(String.self, forKey: .city)
+        reelURL = try c.decodeIfPresent(String.self, forKey: .reelURL)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        tips = try c.decodeIfPresent([String].self, forKey: .tips)
+        whatToOrder = try c.decodeIfPresent([String].self, forKey: .whatToOrder)
+        vibe = try c.decodeIfPresent([String].self, forKey: .vibe)
+        instagramHandle = try c.decodeIfPresent(String.self, forKey: .instagramHandle)
+        website = try c.decodeIfPresent(String.self, forKey: .website)
+        hoursHint = try c.decodeIfPresent(String.self, forKey: .hoursHint)
+        priceLevelAI = try c.decodeIfPresent(Int.self, forKey: .priceLevelAI)
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
+        savedAt = try c.decode(Date.self, forKey: .savedAt)
+        // Absent from a backend older than these fields. Defaulting keeps the
+        // app working against a server that hasn't deployed yet.
+        seenInReels = try c.decodeIfPresent([ReelMention].self, forKey: .seenInReels) ?? []
+        addedManually = try c.decodeIfPresent(Bool.self, forKey: .addedManually) ?? false
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, place, city, description, tips, confidence, vibe, website
+        case seenInReels = "seen_in_reels"
+        case addedManually = "added_manually"
         case mapID = "map_id"
         case addedByID = "added_by_id"
         case addedByName = "added_by_name"
@@ -289,6 +323,33 @@ public struct MapMemberSummary: Codable, Identifiable, Hashable, Sendable {
         // the safe read: it shows the member normally rather than labelling
         // someone blocked who isn't.
         isBlocked = try c.decodeIfPresent(Bool.self, forKey: .isBlocked) ?? false
+    }
+}
+
+/// One autocomplete row. Nothing has been looked up yet — this is a name and
+/// an id, which is what makes suggesting-while-typing affordable.
+public struct PlaceSuggestion: Codable, Identifiable, Hashable, Sendable {
+    public var id: String { placeID }
+    public let placeID: String
+    public let name: String
+    public let detail: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, detail
+        case placeID = "place_id"
+    }
+}
+
+/// A public reel that mentions a place, from anyone's analysis. This is why a
+/// place you merely searched for can arrive knowing what to order.
+public struct ReelMention: Codable, Hashable, Sendable {
+    public let url: String
+    public let authorHandle: String?
+    public let platform: String
+
+    enum CodingKeys: String, CodingKey {
+        case url, platform
+        case authorHandle = "author_handle"
     }
 }
 

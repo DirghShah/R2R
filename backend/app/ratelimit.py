@@ -78,3 +78,8 @@ def limit_vibe_search(user_id: str) -> None:
     bill rather than just noise. Per minute, not per hour: searching is
     interactive, and an hourly bucket would lock someone out mid-session."""
     _hit(f"vibe:{user_id}", settings.vibe_search_per_minute, window_seconds=60)
+
+
+def limit_place_search(user_id: str) -> None:
+    """Autocomplete is cheap but not free, and it fires while someone types."""
+    _hit(f"placesearch:{user_id}", settings.place_search_per_minute, window_seconds=60)

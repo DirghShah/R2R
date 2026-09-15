@@ -10,20 +10,42 @@ struct RootView: View {
     @State private var tab: Tab = .map
     @State private var pendingInvite: String?
 
+    /// Shown once, ever. A new person used to land on an empty map with
+    /// nothing to press; two first-time testers both stopped there.
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @State private var showingSearch = false
+
     enum Tab { case map, lists, add }
 
     var body: some View {
         TabView(selection: $tab) {
-            MapScreen()
+            MapScreen(openSearch: { showingSearch = true },
+                      openAdd: { tab = .add })
                 .tabItem { Label("Map", systemImage: "mappin.and.ellipse") }
                 .tag(Tab.map)
-            CityListsScreen()
+            CityListsScreen(openSearch: { showingSearch = true },
+                            openAdd: { tab = .add })
                 .tabItem { Label("Lists", systemImage: "list.bullet") }
                 .tag(Tab.lists)
-            AddReelScreen()
-                .tabItem { Label("Analyze", systemImage: "waveform.path.ecg") }
+            AddReelScreen(openSearch: { showingSearch = true })
+                // "Analyze" described the machinery; "Add" describes what the
+                // person is trying to do, and the tab now holds two ways to.
+                .tabItem { Label("Add", systemImage: "plus.circle") }
                 .tag(Tab.add)
         }
+        .fullScreenCover(isPresented: .init(get: { !hasSeenWelcome },
+                                            set: { if !$0 { hasSeenWelcome = true } })) {
+            WelcomeScreen { choice in
+                hasSeenWelcome = true
+                switch choice {
+                case .example: tab = .map
+                case .pasteLink: tab = .add
+                case .search: showingSearch = true
+                case .skip: break
+                }
+            }
+        }
+        .sheet(isPresented: $showingSearch) { PlaceSearchScreen() }
         // Tapping "3 places saved from your reel" should land on the pins it's
         // talking about, not wherever the app was last left.
         .onChange(of: push.pendingDeepLink) { _, link in

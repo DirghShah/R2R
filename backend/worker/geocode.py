@@ -42,6 +42,7 @@ _DETAILS_FIELD_MASK = ",".join([
     "userRatingCount", "priceLevel", "businessStatus", "nationalPhoneNumber",
     "regularOpeningHours", "utcOffsetMinutes", "googleMapsUri", "photos",
 ])
+_PLACES_AUTOCOMPLETE = "https://places.googleapis.com/v1/places:autocomplete"
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 
 
@@ -433,6 +434,92 @@ def _from_search_candidate(cand: dict, place) -> GeocodeResult:
         country=getattr(place, "country", None),
         enriched=False,
     )
+
+
+@dataclass
+class Suggestion:
+    """One autocomplete hit — enough to show a row, not enough to pin."""
+
+    place_id: str
+    name: str
+    detail: str | None = None
+
+
+def suggest(query: str, lat: float | None = None, lng: float | None = None,
+            limit: int = 8) -> list[Suggestion]:
+    """Live suggestions while somebody types a restaurant name.
+
+    Autocomplete rather than text search on purpose: it costs roughly a tenth
+    of a cent against a full search's three cents, which is the difference
+    between affording live results and charging the user's typing speed. The
+    chosen place is resolved once, afterwards.
+
+    Biased toward the user's location when known, because "tartine" means the
+    one nearby far more often than the one three thousand miles away.
+    """
+    query = (query or "").strip()
+    if len(query) < 2 or settings.geocoder != "google" or not settings.google_places_api_key:
+        return []
+
+    body: dict = {
+        "input": query,
+        "languageCode": settings.google_places_language,
+        "regionCode": settings.google_places_region,
+        # Venues, not street addresses or countries.
+        "includedPrimaryTypes": ["restaurant", "cafe", "bar", "bakery", "food"],
+    }
+    if lat is not None and lng is not None:
+        body["locationBias"] = {
+            "circle": {"center": {"latitude": lat, "longitude": lng},
+                       "radius": 30000.0}
+        }
+
+    try:
+        r = httpx.post(
+            _PLACES_AUTOCOMPLETE,
+            headers={
+                "X-Goog-Api-Key": settings.google_places_api_key,
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=10,
+        )
+        r.raise_for_status()
+        payload = r.json()
+    except Exception:  # noqa: BLE001 — a dead suggestion list is not an error
+        log.warning("autocomplete failed for %r", query, exc_info=True)
+        return []
+
+    out: list[Suggestion] = []
+    for item in (payload.get("suggestions") or [])[:limit]:
+        pred = item.get("placePrediction") or {}
+        pid = pred.get("placeId")
+        if not pid:
+            continue
+        text = (pred.get("structuredFormat") or {})
+        name = ((text.get("mainText") or {}).get("text")
+                or (pred.get("text") or {}).get("text"))
+        if not name:
+            continue
+        out.append(Suggestion(
+            place_id=pid,
+            name=name,
+            detail=(text.get("secondaryText") or {}).get("text"),
+        ))
+    return out
+
+
+def resolve(place_id: str) -> GeocodeResult | None:
+    """Turn a chosen suggestion into a full place.
+
+    One Place Details call. This is the only billed lookup in the manual-add
+    flow beyond the typing itself, and it is the same call the reel pipeline
+    makes, so the resulting place is identical to one a reel would produce.
+    """
+    if settings.geocoder != "google" or not settings.google_places_api_key:
+        return None
+    result = _places_details(place_id, _EnrichTarget(name=""))
+    return result if result.lat is not None else None
 
 
 @dataclass

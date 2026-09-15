@@ -244,7 +244,11 @@ class UserPlace(Base):
     # Who added it — powers "Priya added Kung Fu Tea" in a shared map.
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     place_id: Mapped[str] = mapped_column(ForeignKey("places.id"), index=True)
-    reel_source_id: Mapped[str] = mapped_column(ForeignKey("reel_sources.id"))
+    # Null for a place added by searching for it rather than sharing a reel.
+    # Required until manual adding existed, which is why it needed a migration.
+    reel_source_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reel_sources.id"), nullable=True
+    )
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     tips: Mapped[list | None] = mapped_column(JSON, nullable=True)
     what_to_order: Mapped[list | None] = mapped_column(JSON, nullable=True)

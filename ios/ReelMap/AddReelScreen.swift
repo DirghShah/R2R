@@ -3,6 +3,10 @@ import SwiftData
 import SwiftUI
 
 struct AddReelScreen: View {
+    /// Opens the place search sheet, which lives at the root so it can be
+    /// reached from here and from either empty state.
+    var openSearch: () -> Void = {}
+
     @EnvironmentObject private var store: ActivityStore
     @EnvironmentObject private var maps: MapStore
     @Environment(\.modelContext) private var context
@@ -21,7 +25,7 @@ struct AddReelScreen: View {
                     Text("ADD A PLACE")
                         .font(.system(size: 13, weight: .semibold)).tracking(0.4)
                         .foregroundStyle(.linkBlue)
-                    Text("Analyze a Reel").font(.display(30, .bold)).foregroundStyle(.ink)
+                    Text("Two ways in").font(.display(30, .bold)).foregroundStyle(.ink)
                     // Say where the pins will land — with multiple maps, an
                     // unlabelled destination is a guessing game.
                     if let map = maps.current {
@@ -33,6 +37,7 @@ struct AddReelScreen: View {
                     Color.clear.frame(height: 16)
 
                     inputCard
+                    searchCard.padding(.top, 12)
                     if let processing { analyzingNow(processing).padding(.top, 20) }
                     dashboard.padding(.top, 22)
                     queueSection.padding(.top, 22)
@@ -44,6 +49,35 @@ struct AddReelScreen: View {
         }
         .task { await store.refreshNow(context) }
         .refreshable { await store.refreshNow(context) }
+    }
+
+    /// The other door. Sharing a reel was the only way in, which left anyone
+    /// who doesn't live on Instagram with an empty app and nothing to do.
+    private var searchCard: some View {
+        Button { Haptics.tap(); openSearch() } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Color.appAccent.opacity(0.13)).frame(width: 38, height: 38)
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.appAccent)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Search for a place")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.ink)
+                    Text("Add somewhere you've already been. No reel needed.")
+                        .font(.system(size: 12.5)).foregroundStyle(.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.inkMuted)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(16)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Input card

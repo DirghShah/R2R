@@ -310,6 +310,43 @@ public actor APIClient {
         try await requestVoid("/places/\(id)", method: "DELETE")
     }
 
+    /// Put real pins on an empty map in about a second, for nothing.
+    ///
+    /// Submits a reel that has already been analysed, so the backend copies the
+    /// stored places across instead of fetching and extracting. Throws when no
+    /// example is configured, which is how the app knows not to offer it.
+    @discardableResult
+    public func submitExampleReel() async throws -> ReelStatus {
+        try await request("/reels/example", method: "POST")
+    }
+
+    /// Live suggestions while somebody types a restaurant name.
+    ///
+    /// The first thing a new person wants is to add somewhere they've already
+    /// been, before they've shared anything — so this is what makes the app
+    /// worth opening on day one.
+    public func suggestPlaces(
+        query: String, lat: Double? = nil, lng: Double? = nil
+    ) async throws -> [PlaceSuggestion] {
+        var items = [URLQueryItem(name: "q", value: query)]
+        if let lat, let lng {
+            items.append(URLQueryItem(name: "lat", value: String(lat)))
+            items.append(URLQueryItem(name: "lng", value: String(lng)))
+        }
+        var comps = URLComponents()
+        comps.queryItems = items
+        return try await request("/places/suggest?\(comps.percentEncodedQuery ?? "")")
+    }
+
+    /// Save a place picked from search. Adds to the given map, or the one the
+    /// user is looking at.
+    @discardableResult
+    public func addPlace(placeID: String, mapID: String?) async throws -> SavedPlace {
+        struct Body: Encodable { let place_id: String; let map_id: String? }
+        return try await request("/places/add", method: "POST",
+                                 body: Body(place_id: placeID, map_id: mapID))
+    }
+
     /// Search saved places by what they feel like, not what they're called.
     ///
     /// "Somewhere quiet I can work", "impressive but not stuffy". The name

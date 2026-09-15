@@ -4,6 +4,9 @@ import SwiftData
 import SwiftUI
 
 struct CityListsScreen: View {
+    var openSearch: () -> Void = {}
+    var openAdd: () -> Void = {}
+
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var maps: MapStore
     @Query(sort: \CachedPlace.savedAt, order: .reverse) private var cachedPlaces: [CachedPlace]
@@ -295,6 +298,8 @@ struct CityListsScreen: View {
         .padding(.top, 40)
     }
 
+    /// An empty state that can be acted on, not one that describes the app at
+    /// you. Both first-time testers stopped at the old version of this screen.
     private var empty: some View {
         VStack(spacing: 10) {
             ZStack {
@@ -302,11 +307,53 @@ struct CityListsScreen: View {
                 Image(systemName: "square.stack.3d.up.fill").font(.system(size: 24, weight: .semibold)).foregroundStyle(.appAccent)
             }
             Text("No saved places yet").font(.display(19, .semibold)).foregroundStyle(.ink)
-            Text("Analyze a reel and Nosh builds your city lists automatically — grouped, ranked, and ready to explore.")
+            Text("Add somewhere you've been, or share a reel and Nosh pins every place in it.")
                 .font(.callout).foregroundStyle(.inkSecondary).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: 9) {
+                Button { Haptics.tap(); openSearch() } label: {
+                    Label("Search for a place", systemImage: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                        .background(Color.appAccent,
+                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }.buttonStyle(.plain)
+                Button { Haptics.tap(); openAdd() } label: {
+                    Label("Paste a reel link", systemImage: "link")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.ink)
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.cardStroke))
+                }.buttonStyle(.plain)
+            }
+            .padding(.top, 8)
+
+            // The two lists Jeff described wanting before he had used the app
+            // at all. Offered rather than created: two maps nobody asked for
+            // is clutter, and one tap is cheap.
+            if !maps.maps.contains(where: { !$0.isPersonal }) {
+                HStack(spacing: 8) {
+                    Text("Start a list:").font(.system(size: 12.5)).foregroundStyle(.inkMuted)
+                    quickList("Want to try", emoji: "🔖")
+                    quickList("Been to", emoji: "✅")
+                }
+                .padding(.top, 10)
+            }
         }
         .padding(32)
+    }
+
+    private func quickList(_ name: String, emoji: String) -> some View {
+        Button {
+            Haptics.tap()
+            Task { try? await maps.create(name: name, emoji: emoji) }
+        } label: {
+            Text("\(emoji) \(name)")
+                .font(.system(size: 12.5, weight: .medium)).foregroundStyle(.ink)
+                .padding(.horizontal, 11).padding(.vertical, 6)
+                .overlay(Capsule().strokeBorder(Color.cardStroke))
+        }.buttonStyle(.plain)
     }
 
     private func toggle(_ city: String) {

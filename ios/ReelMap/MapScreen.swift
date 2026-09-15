@@ -4,6 +4,9 @@ import SwiftData
 import SwiftUI
 
 struct MapScreen: View {
+    var openSearch: () -> Void = {}
+    var openAdd: () -> Void = {}
+
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var activity: ActivityStore
     @EnvironmentObject private var maps: MapStore
@@ -123,6 +126,10 @@ struct MapScreen: View {
         }
         .overlay(alignment: .bottomTrailing) { fabColumn }
         .overlay(alignment: .bottom) { bottomLayer }
+        // A blank map with no explanation is where both first-time testers
+        // stopped. This floats over it rather than replacing it, so the map is
+        // still there to pan around while you decide.
+        .overlay { if allPlaces.isEmpty { emptyPrompt } }
         .task {
             location.request()
             await Syncer.refresh(context)
@@ -150,6 +157,41 @@ struct MapScreen: View {
 
     /// The map can only ever show pinned places, so state the shortfall instead
     /// of letting the count quietly disagree with the user's saved places.
+    private var emptyPrompt: some View {
+        VStack(spacing: 9) {
+            Text("Nothing on your map yet")
+                .font(.display(18, .semibold)).foregroundStyle(.ink)
+            Text("Add a place you've been to, or share a reel and Nosh pins everywhere it mentions.")
+                .font(.system(size: 13.5)).foregroundStyle(.inkSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 9) {
+                Button { Haptics.tap(); openSearch() } label: {
+                    Label("Search", systemImage: "magnifyingglass")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(Color.appAccent,
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }.buttonStyle(.plain)
+                Button { Haptics.tap(); openAdd() } label: {
+                    Label("Paste a link", systemImage: "link")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.ink)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.cardStroke))
+                }.buttonStyle(.plain)
+            }
+            .padding(.top, 3)
+        }
+        .padding(22)
+        .frame(maxWidth: 330)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .strokeBorder(Color.cardStroke))
+        .shadow(color: .black.opacity(0.18), radius: 22, y: 8)
+        .padding(.horizontal, 28)
+    }
+
     private var unmappedPill: some View {
         Button { Haptics.tap(); showUnmapped = true } label: {
             HStack(spacing: 7) {

@@ -48,6 +48,7 @@ struct PlaceDetailScreen: View {
                     if showsAttribution, let name = place.addedByName { addedByCard(name) }
                     visitedCard
                     sourcedFrom
+                    if !place.reelMentions.isEmpty { seenInReelsCard }
                     actions
                     removeButton
             reportButton
@@ -291,7 +292,63 @@ struct PlaceDetailScreen: View {
         .contentShape(Rectangle())
     }
 
-    private var sourcedFrom: some View {
+    /// A place added by searching has no reel behind it, and an empty
+    /// "Sourced from" card was the giveaway. Say what actually happened.
+    @ViewBuilder private var sourcedFrom: some View {
+        if place.addedManually {
+            HStack(spacing: 11) {
+                ZStack {
+                    Circle().fill(Color.appAccent.opacity(0.13)).frame(width: 44, height: 44)
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(.appAccent)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Added by you").font(.system(size: 13)).foregroundStyle(.inkMuted)
+                    Text("Searched, not shared").font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.ink)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 15).padding(.vertical, 13).card(20)
+        } else {
+            reelSourceCard
+        }
+    }
+
+    /// Reels other people analysed that talk about this place. The reason
+    /// searching inside Nosh beats searching in Maps: somebody else's reel
+    /// already worked out what to order here.
+    private var seenInReelsCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("ALSO SEEN IN").font(.system(size: 11, weight: .semibold))
+                .tracking(0.4).foregroundStyle(.inkMuted)
+            ForEach(place.reelMentions, id: \.url) { mention in
+                Button {
+                    guard let url = URL(string: mention.url) else { return }
+                    UIApplication.shared.open(url)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 17))
+                            .foregroundStyle(PlatformStyle.color(mention.platform))
+                        Text(mention.authorHandle.map { "@\($0)" }
+                             ?? PlatformStyle.name(mention.platform))
+                            .font(.system(size: 14, weight: .medium)).foregroundStyle(.ink)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 11, weight: .bold)).foregroundStyle(.inkMuted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(15).card(20)
+    }
+
+    private var reelSourceCard: some View {
         HStack(spacing: 11) {
             ZStack {
                 LinearGradient(colors: [tint, Color.deepGreen], startPoint: .topLeading, endPoint: .bottomTrailing)

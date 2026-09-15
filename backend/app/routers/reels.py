@@ -282,3 +282,45 @@ def _title(reel: ReelSource) -> str | None:
     if reel.author_handle:
         return f"@{reel.author_handle}"
     return None
+
+
+@router.post("/reels/example", response_model=ReelStatusResponse)
+def submit_example_reel(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReelStatusResponse:
+    """Put real pins on a brand new map in about a second, for nothing.
+
+    A new person lands on an empty map with no reels of their own and nothing
+    to press. This submits one reel that has already been analysed, so the
+    normal path recognises it and copies the stored places across — no fetch,
+    no model call, no geocoding, and no quota consumed. They see what the app
+    actually does before doing any work.
+
+    404 when no example is configured, so the app simply doesn't offer it
+    rather than showing a button that fails.
+    """
+    url = settings.example_reel_url
+    if not url:
+        raise HTTPException(status_code=404, detail="No example configured")
+
+    try:
+        _, cid = parse_source(url)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="No example configured")
+
+    reel = db.scalar(select(ReelSource).where(ReelSource.canonical_id == cid))
+    # Deliberately not analysed on demand: an example that has to be fetched
+    # and extracted is slow, costs money, and can fail in front of somebody on
+    # their first thirty seconds with the app.
+    if reel is None or reel.status != "done":
+        raise HTTPException(status_code=404, detail="No example available")
+
+    target = personal_map(db, user.id)
+    _record_submission(db, user.id, reel.id)
+    saved = _places_on_map(db, target.id, reel.id)
+    db.commit()
+    if saved == 0:
+        enqueue_analyze(reel.id, user.id, target.id)
+    return ReelStatusResponse(reel_id=reel.id, status="done", place_count=saved,
+                              already_analyzed=True)

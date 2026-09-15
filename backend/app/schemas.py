@@ -58,6 +58,34 @@ class PlaceOut(BaseModel):
     location_source: str | None = None
 
 
+class PlaceSuggestion(BaseModel):
+    """One autocomplete row. Not a place yet — nothing has been looked up."""
+
+    place_id: str
+    name: str
+    detail: str | None = None
+
+
+class AddPlaceRequest(BaseModel):
+    """Add a place the user picked from search rather than shared a reel of."""
+
+    place_id: str = Field(min_length=1, max_length=400)
+    map_id: str | None = None
+
+
+class ReelMention(BaseModel):
+    """A public reel that already talks about this place.
+
+    Drawn from reels other people have analysed, which is why a place someone
+    searched for can arrive already knowing what to order. The handle is the
+    reel's author, never the Nosh user who saved it.
+    """
+
+    url: str
+    author_handle: str | None = None
+    platform: str
+
+
 class SetPlaceLocationRequest(BaseModel):
     """A hand-placed pin for a place the geocoder couldn't resolve."""
 
@@ -87,6 +115,12 @@ class UserPlaceOut(BaseModel):
     hours_hint: str | None = None
     price_level_ai: int | None = None
     confidence: float | None = None
+    # Public reels that mention this place, from anyone's analysis. Empty for a
+    # place nobody has shared a reel about, which is most of them early on.
+    seen_in_reels: list[ReelMention] = []
+    # True when this was added by searching rather than from a reel, so the
+    # detail screen can say "Added by you" instead of showing an empty source.
+    added_manually: bool = False
     saved_at: datetime
 
 
