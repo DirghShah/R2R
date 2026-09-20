@@ -28,6 +28,17 @@ struct CityListsScreen: View {
     @State private var vibeMatches: [VibeSearchResponse.Match] = []
     @State private var vibeSearching = false
     @State private var vibeError: String?
+    @FocusState private var searchFocused: Bool
+
+    /// Shown when the field is focused and empty. A search box can only teach
+    /// its own capability before anything is typed — afterwards the person is
+    /// already committed to a query, and if it was a name query they have
+    /// already been told it failed.
+    private let vibeExamples = [
+        "quiet enough to work",
+        "impressive for a date",
+        "cheap and late night",
+    ]
 
     enum SortMode: String, CaseIterable, Identifiable {
         case recent = "Recent", rating = "Top rated", name = "Name"
@@ -101,9 +112,11 @@ struct CityListsScreen: View {
                         MapHeaderBar().padding(.top, 6).padding(.bottom, 4)
                         header
                         searchBar
+                        vibePrompts
                         if cities.isEmpty {
                             noResults
                         } else {
+                            vibeOffer
                             ForEach(cities, id: \.name) { city in
                                 CityRow(
                                     name: city.name,
@@ -202,13 +215,14 @@ struct CityListsScreen: View {
                         .frame(width: 15)
                 }
                 TextField("", text: $searchText,
-                          prompt: Text("Search, or describe a vibe").foregroundColor(.inkMuted))
+                          prompt: Text("Search a name, or describe a vibe").foregroundColor(.inkMuted))
                     .font(.system(size: 14)).foregroundStyle(.ink)
                     .autocorrectionDisabled().textInputAutocapitalization(.never)
                     .submitLabel(.search)
                     // Return runs the vibe search. Typing keeps filtering by
                     // name, so nothing gets slower and nothing costs anything
                     // until a question is actually asked.
+                    .focused($searchFocused)
                     .onSubmit { Task { await runVibeSearch() } }
                     .onChange(of: searchText) { _, _ in clearVibeResults() }
                 if !searchText.isEmpty {
@@ -238,15 +252,82 @@ struct CityListsScreen: View {
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .font(.system(size: 12)).foregroundStyle(.inkSecondary)
-            } else if !searchText.isEmpty {
-                // The hint only appears once there is something to submit, so
-                // it never sits there as decoration.
-                Text("Press return to search by vibe — try “quiet enough to work”")
-                    .font(.system(size: 12)).foregroundStyle(.inkMuted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.horizontal, 22).padding(.bottom, 12)
+    }
+
+    /// Tappable examples, shown where results would be once the field is
+    /// focused and still empty.
+    ///
+    /// This replaced a line of grey text under the bar reading "press return to
+    /// search by vibe". Nobody reads that: it appears only after you have typed,
+    /// which is after a natural-language query has already come back empty from
+    /// the name filter and told you the search is broken.
+    @ViewBuilder private var vibePrompts: some View {
+        if searchFocused && searchText.isEmpty && vibeQuery == nil {
+            VStack(alignment: .leading, spacing: 9) {
+                Text("OR DESCRIBE WHAT YOU'RE AFTER")
+                    .font(.system(size: 11, weight: .semibold)).tracking(0.4)
+                    .foregroundStyle(.inkMuted)
+                ForEach(vibeExamples, id: \.self) { example in
+                    Button {
+                        Haptics.tap()
+                        searchText = example
+                        Task { await runVibeSearch() }
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.appAccent)
+                            Text("“\(example)”")
+                                .font(.system(size: 14)).foregroundStyle(.ink)
+                            Spacer(minLength: 0)
+                            Image(systemName: "arrow.up.left")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.inkMuted)
+                        }
+                        .padding(.horizontal, 13).padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                        .card(13)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 22).padding(.top, 4)
+        }
+    }
+
+    /// A compact offer above the results while a name search is showing.
+    ///
+    /// Return still runs the search, but return is invisible — it can't be the
+    /// only way in. This is the visible one.
+    @ViewBuilder private var vibeOffer: some View {
+        if vibeQuery == nil, !vibeSearching, !searchText.isEmpty, !cities.isEmpty {
+            Button {
+                Haptics.tap()
+                Task { await runVibeSearch() }
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.appAccent)
+                    Text("Search “\(searchText)” by vibe instead")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(.ink)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.inkMuted)
+                }
+                .padding(.horizontal, 13).padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(Color.appAccent.opacity(0.09),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 22).padding(.bottom, 10)
+        }
     }
 
     private func clearVibeResults() {
@@ -266,6 +347,8 @@ struct CityListsScreen: View {
             let result = try await APIClient.shared.vibeSearch(query: q, mapID: maps.currentID)
             vibeMatches = result.matches
             vibeQuery = q
+            // Otherwise the keyboard covers the answer you just asked for.
+            searchFocused = false
             Haptics.success()
         } catch {
             // Never render a failure as "no results" — that reads as though
@@ -276,26 +359,75 @@ struct CityListsScreen: View {
         }
     }
 
-    private var noResults: some View {
-        VStack(spacing: 6) {
-            Image(systemName: vibeQuery == nil ? "magnifyingglass" : "sparkles")
-                .font(.title2).foregroundStyle(.inkMuted)
-            Text("No matches").font(.display(17, .semibold)).foregroundStyle(.ink)
-            if vibeQuery != nil {
-                // The honest version. Vibe search only knows what a reel
-                // actually said, so an empty result usually means nobody
-                // described a saved place that way — not that the search broke.
+    /// The best place in the app to teach vibe search, because it is exactly
+    /// when someone needs it.
+    ///
+    /// A typed phrase finds no place *named* that, so this used to say "No
+    /// matches" and stop — telling the person the search failed at the precise
+    /// moment the app could have impressed them. The dead end is now the offer.
+    @ViewBuilder private var noResults: some View {
+        if vibeQuery != nil {
+            // Already a vibe search. Nothing to upsell — just be honest about
+            // why: it can only find what a reel actually said.
+            VStack(spacing: 6) {
+                Image(systemName: "sparkles").font(.title2).foregroundStyle(.inkMuted)
+                Text("No matches").font(.display(17, .semibold)).foregroundStyle(.ink)
                 Text("None of your saved places were described that way. Try a different feeling, or fewer conditions.")
                     .font(.callout).foregroundStyle(.inkSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 32)
-            } else {
+            }
+            .padding(.top, 40)
+        } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 {
+            // Too short to search on. Offering a button that refuses to run is
+            // worse than offering nothing.
+            VStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.title2).foregroundStyle(.inkMuted)
+                Text("No matches").font(.display(17, .semibold)).foregroundStyle(.ink)
                 Text("Nothing saved matches “\(searchText)”.")
                     .font(.callout).foregroundStyle(.inkSecondary)
             }
+            .padding(.top, 40)
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 26)).foregroundStyle(.appAccent)
+                Text("No place is called that")
+                    .font(.display(17, .semibold)).foregroundStyle(.ink)
+                // Verb-led rather than "vibe" here: at the moment somebody is
+                // stuck, being understood beats being on-brand.
+                Text("But Nosh can search by what a place feels like, not just its name.")
+                    .font(.callout).foregroundStyle(.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 30)
+
+                Button {
+                    Haptics.tap()
+                    Task { await runVibeSearch() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if vibeSearching {
+                            ProgressView().tint(.white).controlSize(.small)
+                        } else {
+                            Image(systemName: "sparkles").font(.system(size: 13, weight: .semibold))
+                        }
+                        Text(vibeSearching ? "Looking…" : "Search “\(searchText)”")
+                            .font(.system(size: 15, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20).padding(.vertical, 13)
+                    .background(Color.appAccent,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(vibeSearching)
+                .padding(.top, 6)
+            }
+            .padding(.top, 34).padding(.horizontal, 22)
         }
-        .padding(.top, 40)
     }
 
     /// An empty state that can be acted on, not one that describes the app at
