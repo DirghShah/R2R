@@ -203,3 +203,59 @@ def test_every_model_we_might_run_has_a_price():
     # back cheaper than that.
     assert _claude_cost("claude-haiku-4-5", 1_000_000, 0) == 1.0
     assert _claude_cost("something-we-have-never-heard-of", 1_000_000, 0) >= 1.0
+
+
+# --- picking the onboarding example ---------------------------------------
+
+
+def _score(places, cities, tips, pinned=None, photos=None):
+    from app.routers.admin import _example_score
+
+    pinned = places if pinned is None else pinned
+    photos = places if photos is None else photos
+    return _example_score(places, cities, tips, pinned, photos)
+
+
+def test_the_sweet_spot_beats_a_roundup_and_a_single(client):
+    """One place is underwhelming; nine buries the moment under pins."""
+    four = _score(4, 1, 12)
+    nine = _score(9, 1, 27)
+    one = _score(1, 1, 3)
+    assert four > nine
+    assert four > one
+
+
+def test_one_city_beats_a_tour(client):
+    """The map animates to fit the pins, so two cities zooms out to a
+    continent and it looks like nothing happened."""
+    assert _score(4, 1, 12) > _score(4, 3, 12)
+
+
+def test_tips_outweigh_everything(client):
+    """Anyone can drop pins. A new user reading "cash only after 9pm" is the
+    moment it stops looking like a bookmark folder."""
+    rich = _score(4, 1, 12)
+    bare = _score(4, 1, 0)
+    assert rich - bare >= 35
+
+
+def test_a_reel_with_nothing_pinned_scores_zero(client):
+    assert _score(4, 1, 12, pinned=0) == 0.0
+
+
+def test_the_verdict_names_the_actual_fault(client):
+    from app.routers.admin import _example_verdict
+
+    assert "floods" in _example_verdict(9, 1, 27, 9)
+    assert "zooms out" in _example_verdict(4, 3, 12, 4)
+    assert "thin on tips" in _example_verdict(4, 1, 1, 4)
+    assert _example_verdict(4, 1, 12, 4) == "good on every count"
+
+
+def test_candidates_are_ranked_and_guarded(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", TOKEN)
+    assert client.get("/admin/example-candidates").status_code == 404
+
+    body = client.get("/admin/example-candidates", headers=_auth(client)).json()
+    scores = [c["score"] for c in body["candidates"]]
+    assert scores == sorted(scores, reverse=True)

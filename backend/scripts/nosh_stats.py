@@ -156,6 +156,26 @@ def ledger(rows: list[dict], as_csv: bool) -> None:
     print(f"{len(rows)} reels, {money(round(total, 4))}")
 
 
+def candidates(rows: list[dict], considered: int) -> None:
+    """The example-reel shortlist, ranked, with the case against each."""
+    if not rows:
+        print("No analysed reels with places yet — nothing to pick from.")
+        return
+    print(f"Best example reels, out of {considered} analysed\n")
+    for i, c in enumerate(rows, 1):
+        head = f"{i}. {c['url']}"
+        print(head)
+        print(f"   score {c['score']:<6} {c['places']} places in "
+              f"{', '.join(c['cities']) or 'nowhere named'}"
+              f"   {c['tip_lines']} tip lines"
+              f"   {c['with_photos']}/{c['places']} with photos")
+        if c["author_handle"]:
+            print(f"   by @{c['author_handle']} on {c['platform']}")
+        print(f"   {', '.join(c['place_names'])}")
+        print(f"   → {c['why']}\n")
+    print("Set the winner as EXAMPLE_REEL_URL on the Railway API service.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -164,7 +184,17 @@ def main() -> None:
     ap.add_argument("--json", action="store_true", help="raw JSON")
     ap.add_argument("--limit", type=int, default=500)
     ap.add_argument("--status", help="only reels with this status")
+    ap.add_argument("--example", action="store_true",
+                    help="rank reels by how good an onboarding example they'd make")
     args = ap.parse_args()
+
+    if args.example:
+        data = fetch(f"/admin/example-candidates?limit={max(args.limit, 5) if args.limit < 20 else 5}")
+        if args.json:
+            print(json.dumps(data, indent=2))
+        else:
+            candidates(data["candidates"], data["considered"])
+        return
 
     if args.reels:
         path = f"/admin/reels?limit={args.limit}"

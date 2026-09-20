@@ -134,6 +134,23 @@ Scoped to one map by default: that is what people mean when they search while
 looking at a map, and every candidate place is part of the prompt, so scope is
 also the cost control. `VIBE_SEARCH_MAX_PLACES` is the backstop.
 
+### Picking the onboarding example
+
+`EXAMPLE_REEL_URL` decides what every new user sees in their first thirty
+seconds, and choosing it by scrolling a list of ids is guesswork.
+
+    python3 scripts/nosh_stats.py --example
+
+ranks analysed reels by what actually matters in that moment: tips carry the
+most weight, because anyone can drop pins on a map and the thing nobody expects
+is tapping one and reading "cash only after 9pm". Three to five places (one is
+underwhelming, nine buries it), all in one city (the map fits the pins, so two
+cities zooms out to a continent), everything pinned and photographed. Each
+candidate comes with the case against it.
+
+`GET /admin/example-candidates` is the only ops endpoint that returns reel URLs
+and place names, because choosing what to make public requires seeing it.
+
 ### Cost control
 
 Two Google calls used to run for every extracted place, every time. Three

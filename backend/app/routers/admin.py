@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db import get_db
@@ -251,3 +251,103 @@ def reel_ledger(
         "offset": offset,
         "reels": [_row(r) for r in rows],
     }
+
+
+@router.get("/admin/example-candidates", dependencies=[Depends(_require_admin)])
+def example_candidates(limit: int = 5, db: Session = Depends(get_db)) -> dict:
+    """Rank analysed reels by how good an onboarding example they'd make.
+
+    EXAMPLE_REEL_URL decides what every new user sees in their first thirty
+    seconds, and picking it by scrolling a list of ids is guesswork. This scores
+    the things that actually matter for that moment.
+
+    The one endpoint here that returns reel URLs and place names. That is the
+    point of it: you are choosing what to make public, so you have to be able to
+    see the candidates. It stays behind the same admin token as everything else.
+    """
+    rows = db.scalars(
+        select(ReelSource).where(ReelSource.status == "done")
+    ).all()
+
+    scored = []
+    for reel in rows:
+        saves = db.scalars(
+            select(UserPlace)
+            .options(joinedload(UserPlace.place).joinedload(Place.city))
+            .where(UserPlace.reel_source_id == reel.id)
+        ).unique().all()
+        # One canonical place may be saved by several people; the example adds
+        # the distinct set, so that is what counts.
+        by_place = {up.place_id: up for up in saves if up.place is not None}
+        places = list(by_place.values())
+        if not places:
+            continue
+
+        cities = {up.place.city.name for up in places if up.place.city}
+        tips = sum(len(up.tips or []) + len(up.what_to_order or []) for up in places)
+        pinned = sum(1 for up in places if up.place.lat is not None)
+        with_photo = sum(1 for up in places if up.place.photos)
+
+        scored.append({
+            "score": round(_example_score(len(places), len(cities), tips,
+                                          pinned, with_photo), 2),
+            "url": reel.url,
+            "platform": reel.platform,
+            "author_handle": reel.author_handle,
+            "places": len(places),
+            "pinned": pinned,
+            "with_photos": with_photo,
+            "cities": sorted(cities),
+            "tip_lines": tips,
+            "place_names": [up.place.name for up in places][:6],
+            "why": _example_verdict(len(places), len(cities), tips, pinned),
+        })
+
+    scored.sort(key=lambda c: -c["score"])
+    return {"candidates": scored[:max(1, min(limit, 20))], "considered": len(rows)}
+
+
+def _example_score(places: int, cities: int, tips: int,
+                   pinned: int, with_photos: int) -> float:
+    """What makes a first-run demo land, weighted by how much it matters.
+
+    Tips carry the most weight because they are the part nobody expects.
+    Anyone can drop pins on a map; a new user tapping one and reading "cash
+    only after 9pm" is the moment the app stops looking like a bookmark folder.
+    """
+    if places == 0 or pinned == 0:
+        return 0.0
+
+    # Three to five is the sweet spot. One place is underwhelming, and a
+    # nine-place roundup buries the moment under a wall of pins.
+    if 3 <= places <= 5:
+        size = 1.0
+    elif places == 2 or places == 6:
+        size = 0.6
+    else:
+        size = 0.2
+
+    # The map animates to fit the pins, so two cities zooms out to a continent
+    # and it looks like nothing happened.
+    focus = 1.0 if cities == 1 else (0.3 if cities == 2 else 0.0)
+
+    richness = min(tips / (places * 3.0), 1.0)   # ~3 lines a place is plenty
+    complete = (pinned / places) * 0.5 + (with_photos / places) * 0.5
+
+    return 40 * richness + 25 * size + 20 * focus + 15 * complete
+
+
+def _example_verdict(places: int, cities: int, tips: int, pinned: int) -> str:
+    """Why this one isn't the obvious pick, in plain words."""
+    faults = []
+    if places < 3:
+        faults.append("too few places to impress")
+    elif places > 5:
+        faults.append(f"{places} places floods a new map")
+    if cities > 1:
+        faults.append(f"spans {cities} cities, so the map zooms out too far")
+    if tips < places * 2:
+        faults.append("thin on tips, which is the part that sells it")
+    if pinned < places:
+        faults.append(f"{places - pinned} place(s) never got a pin")
+    return "; ".join(faults) or "good on every count"
