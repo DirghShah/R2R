@@ -12,14 +12,29 @@ final class ShareViewController: UIViewController {
 
     /// Presented *over* the app being shared from, not instead of it.
     ///
-    /// The host presents this controller, and with the default .fullScreen it
-    /// tears the source app out of the hierarchy — so a clear background has
-    /// nothing behind it but black, and a small toast ends up floating in a
-    /// void. Overriding the getter rather than assigning in viewDidLoad is
-    /// what makes it stick: the host reads this before it presents.
+    /// Necessary but, on its own, not sufficient — which is what the first
+    /// attempt at this got wrong. A share extension runs in its own process
+    /// and the system wraps this controller in container views it owns, so
+    /// clearing our own view leaves an opaque container above it still
+    /// painting black.
     override var modalPresentationStyle: UIModalPresentationStyle {
         get { .overFullScreen }
         set { _ = newValue }
+    }
+
+    /// Clear every view between ours and the window.
+    ///
+    /// Here rather than in viewDidLoad because those containers do not exist
+    /// yet at that point. This is the part the previous attempt was missing,
+    /// and why the toast still floated in a black void.
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        var node: UIView? = view
+        while let current = node {
+            current.backgroundColor = .clear
+            current.isOpaque = false
+            node = current.superview
+        }
     }
 
     override func viewDidLoad() {
