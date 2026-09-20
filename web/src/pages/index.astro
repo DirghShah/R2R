@@ -9,11 +9,14 @@ const steps = [
     title: 'Share the reel',
     body: 'From Instagram, TikTok or YouTube, hit Share and pick Nosh. Or paste the link straight into the app if you already copied it. Either way, that is the entire interaction.',
     shot: 'Instagram share sheet with Nosh visible in the row',
+    src: '/shots/web/share-sheet.jpg',
   },
   {
     n: '02',
     title: 'It watches the reel properly',
     body: 'The caption, the text burned onto the screen, the tagged accounts, and what the creator actually says out loud. Most places live in the on-screen text, which is why reading only the caption misses them.',
+    // Still to come: the toast is being fixed, and a screenshot of it on a
+    // black backdrop would show the bug rather than the feature.
     shot: 'The share confirmation toast, over Instagram',
   },
   {
@@ -21,6 +24,7 @@ const steps = [
     title: 'Pins land on your map',
     body: 'About thirty seconds later, with the address, the hours, what to order, and a link back to the reel you got it from. Close the app; a notification tells you when it is done.',
     shot: 'Map screen, ~10 pins, filter chips along the top',
+    src: '/shots/web/map-pins.jpg',
   },
 ];
 
@@ -30,18 +34,21 @@ const features = [
     title: 'Every place, not just the first one',
     body: 'A “9 cafés in Dallas” reel becomes nine pins. Most tools stop at whichever venue is tagged in the post and quietly drop the other eight.',
     shot: 'City list showing many places from one reel',
+    src: '/shots/web/lists-expanded.jpg',
   },
   {
     label: 'Detail',
     title: 'It remembers what to order',
     body: 'The dish the creator raved about, the tip about going before noon, the note that they only take cash. All of it pulled from the reel and kept with the pin.',
     shot: 'Place detail — tips, what to order, hours',
+    src: '/shots/web/place-detail.jpg',
   },
   {
     label: 'Retrieval',
     title: 'Findable when you are actually hungry',
     body: 'Filter by cuisine, browse by city, or just open the map and see what is near you right now. Saved reels are a graveyard; a map is a plan.',
     shot: 'Map with a cuisine filter applied',
+    src: '/shots/web/map-filtered.jpg',
   },
 ];
 
@@ -103,7 +110,7 @@ const faqs = [
       </div>
 
       <div class="hero-shot" data-reveal>
-        <Shot n={1} what="Map screen with pins and filter chips — your best-looking screen" size="290px" />
+        <Shot n={1} what="Map screen with pins and filter chips" src="/shots/web/lists-cities.jpg" size="290px" />
       </div>
     </div>
   </section>
@@ -142,7 +149,7 @@ const faqs = [
           <div class="how-stage">
             {steps.map((s, i) => (
               <div class="how-slide" data-slide={i} data-active={i === 0 ? '' : undefined}>
-                <Shot n={i + 2} what={s.shot} size="270px" />
+                <Shot n={i + 2} what={s.shot} src={s.src} size="270px" />
               </div>
             ))}
           </div>
@@ -164,7 +171,7 @@ const faqs = [
             <p>{f.body}</p>
           </div>
           <div class="feature-shot" data-reveal>
-            <Shot n={i + 5} what={f.shot} size="250px" />
+            <Shot n={i + 5} what={f.shot} src={f.src} size="250px" />
           </div>
         </article>
       ))}
@@ -198,6 +205,10 @@ const faqs = [
         <blockquote>“cheap late-night food near the water”</blockquote>
         <figcaption>Three conditions at once, which keyword search can't do.</figcaption>
       </figure>
+    </div>
+
+    <div class="wrap vibe-shot" data-reveal>
+      <Shot n={10} what="Vibe search — results with the reason each one matched" src="/shots/web/vibe-search.jpg" size="270px" />
     </div>
 
     <div class="wrap wrap--narrow" data-reveal>
@@ -305,6 +316,11 @@ const faqs = [
     font-size: 0.86rem;
     line-height: 1.5;
     color: var(--ink-2);
+  }
+  .vibe-shot {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 34px;
   }
   .vibe .fineprint {
     font-size: 0.86rem;
