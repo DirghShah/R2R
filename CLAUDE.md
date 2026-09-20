@@ -78,6 +78,19 @@ Xcode. Run it before handing over any iOS change.
 
     pip install tree_sitter tree_sitter_swift
 
+## Design skill
+`.claude/skills/ui-ux-pro-max/` — third-party design reference (MIT,
+github.com/nextlevelbuilder/ui-ux-pro-max-skill), installed by copying the
+files rather than running its CLI. Searchable catalogues of UI styles,
+palettes, font pairings and UX guidelines, including a SwiftUI stack. Offline:
+the scripts are standard library only and make no network calls.
+
+    python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>"
+
+Committed to the repo on purpose. The dev container is ephemeral — it has
+already been recycled once mid-project — so anything installed only into the
+home directory disappears.
+
 ## Conventions / guardrails
 - Claude model is config-driven (`ANTHROPIC_MODEL`); default in code is opus, dev uses haiku.
 - Keep the reel-fetch logic behind the `ReelFetcher` interface — it's the fragile/ToS part.
