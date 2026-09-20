@@ -14,9 +14,25 @@ struct MapScreen: View {
 
     @StateObject private var location = LocationManager()
     @State private var filter: String = allFilter
-    @State private var detail: CachedPlace?
-    @State private var showActivity = false
-    @State private var showUnmapped = false
+    /// One sheet slot. Three stacked `.sheet` modifiers on the same view is
+    /// not supported by SwiftUI — presentation goes order-dependent and tearing
+    /// one down while another presents is a crash. An enum makes the states
+    /// mutually exclusive by construction.
+    @State private var route: Route?
+
+    enum Route: Identifiable {
+        case place(CachedPlace)
+        case activity
+        case unmapped
+
+        var id: String {
+            switch self {
+            case .place(let p): return "place-\(p.id)"
+            case .activity: return "activity"
+            case .unmapped: return "unmapped"
+            }
+        }
+    }
     @State private var camera: MapCameraPosition = .automatic
     @State private var didCenterOnUser = false
     @State private var region: MKCoordinateRegion?
@@ -103,7 +119,7 @@ struct MapScreen: View {
             ForEach(clusters) { cluster in
                 Annotation("", coordinate: cluster.coordinate) {
                     if cluster.places.count == 1, let place = cluster.places.first {
-                        SimplePin(color: place.pinColor) { Haptics.tap(); detail = place }
+                        SimplePin(color: place.pinColor) { Haptics.tap(); route = .place(place) }
                     } else {
                         ClusterBubble(count: cluster.places.count, color: cluster.dominantColor) {
                             Haptics.tap(); zoom(to: cluster.places)
@@ -144,14 +160,17 @@ struct MapScreen: View {
         }
         .onChange(of: filter) { _, _ in fitToPins() }
         .refreshable { await Syncer.refresh(context, force: true) }
-        .sheet(item: $detail) {
-            PlaceDetailScreen(place: $0, userLocation: location.current,
-                              detents: [.medium, .large],
-                              showsAttribution: maps.current?.isShared ?? false)
-        }
-        .sheet(isPresented: $showActivity) { ActivityView() }
-        .sheet(isPresented: $showUnmapped) {
-            UnmappedSheet(places: unmapped, userLocation: location.current)
+        .sheet(item: $route) { route in
+            switch route {
+            case .place(let place):
+                PlaceDetailScreen(place: place, userLocation: location.current,
+                                  detents: [.medium, .large],
+                                  showsAttribution: maps.current?.isShared ?? false)
+            case .activity:
+                ActivityView()
+            case .unmapped:
+                UnmappedSheet(places: unmapped, userLocation: location.current)
+            }
         }
     }
 
@@ -193,7 +212,7 @@ struct MapScreen: View {
     }
 
     private var unmappedPill: some View {
-        Button { Haptics.tap(); showUnmapped = true } label: {
+        Button { Haptics.tap(); route = .unmapped } label: {
             HStack(spacing: 7) {
                 Image(systemName: "mappin.slash").font(.system(size: 12, weight: .bold))
                 Text("\(unmapped.count) place\(unmapped.count == 1 ? "" : "s") without a location")
@@ -298,7 +317,7 @@ struct MapScreen: View {
 
     private var fabColumn: some View {
         VStack(spacing: 12) {
-            fab(system: "square.stack.3d.up", badge: activity.activeCount) { showActivity = true }
+            fab(system: "square.stack.3d.up", badge: activity.activeCount) { route = .activity }
             fab(system: "location.fill", badge: 0) {
                 if location.authorized { centerOnUser() }
                 else { location.request() }

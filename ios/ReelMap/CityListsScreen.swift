@@ -17,7 +17,19 @@ struct CityListsScreen: View {
     @State private var selected: CachedPlace?
     @State private var searchText = ""
     @State private var sortMode: SortMode = .recent
-    @State private var pendingDelete: CachedPlace?
+    /// The pin queued for deletion, as plain values.
+    ///
+    /// Deliberately not the CachedPlace. Deleting the model invalidates it, and
+    /// this dialog keeps reading its title while SwiftUI tears the sheet down —
+    /// reading a property off a deleted SwiftData object is a hard crash, which
+    /// is exactly what "the app crashes every time I delete a pin" was.
+    /// PlaceDetailScreen already avoided this; here it was still live.
+    @State private var pendingDelete: PendingDelete?
+
+    struct PendingDelete: Identifiable {
+        let id: String
+        let name: String
+    }
     @State private var deleteError: String?
 
     // Vibe search. Typing filters by name instantly and offline, as it always
@@ -122,6 +134,7 @@ struct CityListsScreen: View {
                         header
                         searchBar
                         vibePrompts
+                            .animation(.snappy(duration: 0.22), value: showsVibePrompts)
                         if cities.isEmpty {
                             noResults
                         } else {
@@ -136,7 +149,9 @@ struct CityListsScreen: View {
                                     expanded: expanded.contains(city.name),
                                     toggle: { toggle(city.name) },
                                     openPlace: { Haptics.tap(); selected = $0 },
-                                    deletePlace: { pendingDelete = $0 },
+                                    deletePlace: {
+                                        pendingDelete = PendingDelete(id: $0.id, name: $0.name)
+                                    },
                                     showsAttribution: maps.current?.isShared ?? false)
                             }
                         }
@@ -160,7 +175,11 @@ struct CityListsScreen: View {
                                                set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible) {
             Button("Remove pin", role: .destructive) {
-                if let place = pendingDelete { Task { await delete(place) } }
+                guard let target = pendingDelete else { return }
+                // Cleared before the delete, not after: leaving it set means
+                // the dialog re-reads a name that no longer exists.
+                pendingDelete = nil
+                Task { await delete(target.id) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -174,9 +193,9 @@ struct CityListsScreen: View {
         }
     }
 
-    private func delete(_ place: CachedPlace) async {
+    private func delete(_ placeID: String) async {
         do {
-            try await Syncer.delete(placeID: place.id, context)
+            try await Syncer.delete(placeID: placeID, context)
             Haptics.success()
         } catch {
             deleteError = error.localizedDescription
@@ -281,13 +300,18 @@ struct CityListsScreen: View {
     /// empty from the name filter and been reported as a failure.
     @ViewBuilder private var vibePrompts: some View {
         if showsVibePrompts {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 0) {
-                    Text(hasUsedVibeSearch ? "OR DESCRIBE WHAT YOU'RE AFTER"
-                                           : "YOU CAN ALSO SEARCH BY FEELING")
-                        .font(.system(size: 11, weight: .semibold)).tracking(0.4)
-                        .foregroundStyle(.inkMuted)
-                    Spacer()
+            // One scrolling row of pills, not three stacked cards. The cards
+            // took roughly half the screen above the list, which made a
+            // suggestion feel like a takeover — and pushed the thing the person
+            // actually came for below the fold.
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.appAccent)
+                    Text(hasUsedVibeSearch ? "Or describe what you're after"
+                                           : "You can also search by how a place feels")
+                        .font(.system(size: 12)).foregroundStyle(.inkSecondary)
+                    Spacer(minLength: 0)
                     // Only while it is unsolicited. Once it is a response to
                     // focus, dismissing it makes no sense.
                     if !hasUsedVibeSearch && !searchFocused {
@@ -296,40 +320,44 @@ struct CityListsScreen: View {
                             hasUsedVibeSearch = true
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(.inkMuted)
-                                .frame(width: 22, height: 22)
+                                .frame(width: 24, height: 24)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                ForEach(vibeExamples, id: \.self) { example in
-                    Button {
-                        Haptics.tap()
-                        searchText = example
-                        Task { await runVibeSearch() }
-                    } label: {
-                        HStack(spacing: 9) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.appAccent)
-                            Text("“\(example)”")
-                                .font(.system(size: 14)).foregroundStyle(.ink)
-                            Spacer(minLength: 0)
-                            Image(systemName: "arrow.up.left")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.inkMuted)
+                .padding(.horizontal, 22)
+
+                ScrollView(.horizontal) {
+                    HStack(spacing: 7) {
+                        ForEach(vibeExamples, id: \.self) { example in
+                            Button {
+                                Haptics.tap()
+                                searchText = example
+                                Task { await runVibeSearch() }
+                            } label: {
+                                Text(example)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.ink)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 13).padding(.vertical, 8)
+                                    .background(Color.appAccent.opacity(0.10), in: Capsule())
+                                    .overlay(Capsule().strokeBorder(Color.appAccent.opacity(0.22)))
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 13).padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                        .card(13)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 22)
                 }
+                .scrollIndicators(.hidden)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 22).padding(.top, 4)
+            .padding(.bottom, 10)
+            // Appearing and disappearing as focus changes; without this the
+            // list under it jumps.
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 

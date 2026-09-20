@@ -10,9 +10,28 @@ struct MapSwitcherSheet: View {
     @EnvironmentObject private var store: MapStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showCreate = false
-    @State private var showProfile = false
-    @State private var manage: MapSummary?
+    /// One sheet slot, not three.
+    ///
+    /// This screen had three `.sheet` modifiers stacked on the same view, which
+    /// SwiftUI does not support — presentation becomes order-dependent and
+    /// tearing one down while another is being presented is where "it crashes
+    /// when I open map settings" comes from. A single slot makes the states
+    /// mutually exclusive by construction.
+    @State private var route: Route?
+
+    enum Route: Identifiable {
+        case create
+        case profile
+        case manage(MapSummary)
+
+        var id: String {
+            switch self {
+            case .create: return "create"
+            case .profile: return "profile"
+            case .manage(let map): return "manage-\(map.id)"
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -32,9 +51,13 @@ struct MapSwitcherSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .sheet(isPresented: $showCreate) { CreateMapSheet() }
-            .sheet(isPresented: $showProfile) { ProfileSheet() }
-            .sheet(item: $manage) { MapDetailSheet(map: $0) }
+            .sheet(item: $route) { route in
+                switch route {
+                case .create: CreateMapSheet()
+                case .profile: ProfileSheet()
+                case .manage(let map): MapDetailSheet(map: map)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
     }
@@ -66,7 +89,7 @@ struct MapSwitcherSheet: View {
             }
             .buttonStyle(.plain)
 
-            Button { Haptics.tap(); manage = map } label: {
+            Button { Haptics.tap(); route = .manage(map) } label: {
                 Image(systemName: "ellipsis").font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.inkMuted).frame(width: 30, height: 30)
             }
@@ -86,7 +109,7 @@ struct MapSwitcherSheet: View {
     }
 
     private var createButton: some View {
-        Button { Haptics.tap(); showCreate = true } label: {
+        Button { Haptics.tap(); route = .create } label: {
             HStack(spacing: 13) {
                 Image(systemName: "plus").font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.appAccent).frame(width: 44, height: 44)
@@ -104,7 +127,7 @@ struct MapSwitcherSheet: View {
     }
 
     private var profileButton: some View {
-        Button { Haptics.tap(); showProfile = true } label: {
+        Button { Haptics.tap(); route = .profile } label: {
             HStack(spacing: 13) {
                 Image(systemName: "person.crop.circle").font(.system(size: 19))
                     .foregroundStyle(.inkSecondary).frame(width: 44, height: 44)
