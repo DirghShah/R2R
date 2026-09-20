@@ -27,6 +27,13 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- Without this every link to the site renders as a blank card in
+         iMessage, WhatsApp and Slack — and the growth loop here is people
+         sending each other links. -->
+    <meta property="og:image" content={new URL('/og.jpg', Astro.site ?? canonical).href} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:image" content={new URL('/og.jpg', Astro.site ?? canonical).href} />
 
     <!-- Downscaled from the app icon, so a browser tab and the phone home
          screen show the same mark. -->

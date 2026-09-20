@@ -3,6 +3,11 @@ import Base from '../layouts/Base.astro';
 import Shot from '../components/Shot.astro';
 import Wordmark from '../components/Wordmark.astro';
 
+// Set this the moment the listing is live. Until then both buttons say so
+// rather than being links that go nowhere — a "Download on the App Store"
+// button that does nothing is worse than no button.
+const appStoreURL: string | null = null;
+
 const steps = [
   {
     n: '01',
@@ -98,13 +103,13 @@ const faqs = [
           the hours and what to order.
         </p>
         <div class="cta" id="get" data-reveal>
-          <a href="#" class="btn">
+          <a href={appStoreURL ?? '/support'} class="btn">
             <svg width="15" height="18" viewBox="0 0 14 17" fill="currentColor" aria-hidden="true">
               <path d="M11.6 9c0-2 1.6-3 1.7-3-.9-1.4-2.4-1.5-2.9-1.6-1.2-.1-2.4.7-3 .7-.6 0-1.6-.7-2.6-.7C3.5 4.4 2.2 5.2 1.5 6.5c-1.4 2.4-.4 6 1 8 .7 1 1.5 2 2.5 2 1 0 1.4-.6 2.6-.6s1.5.6 2.6.6 1.7-1 2.4-2c.7-1.1 1-2.2 1-2.3 0 0-1.9-.7-2-2.9zM9.7 3.2c.5-.6.9-1.5.8-2.4-.8 0-1.8.5-2.3 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.8-.5 2.3-1.2z"/>
             </svg>
-            Download on the App Store
+            {appStoreURL ? 'Download on the App Store' : 'Coming soon on iPhone'}
           </a>
-          <p class="soon">Coming soon — iPhone</p>
+          <p class="soon">{appStoreURL ? 'iPhone — free to try' : 'Launching shortly. Questions? Get in touch.'}</p>
         </div>
       </div>
 
@@ -285,7 +290,9 @@ const faqs = [
     <div class="wrap wrap--narrow center">
       <Wordmark size="clamp(3.5rem, 12vw, 6rem)" />
       <p class="lead closing-lead" data-reveal>Stop saving. Start going.</p>
-      <a href="#" class="btn" data-reveal>Download on the App Store</a>
+      <a href={appStoreURL ?? '/support'} class="btn" data-reveal>
+        {appStoreURL ? 'Download on the App Store' : 'Coming soon on iPhone'}
+      </a>
     </div>
   </section>
 </Base>
