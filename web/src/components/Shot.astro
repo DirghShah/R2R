@@ -21,7 +21,7 @@ const { n, what, src, shape = 'phone', size = '300px' } = Astro.props;
 ---
 <figure class={`shot shot--${shape}`} style={`--w:${size}`}>
   {src ? (
-    <img src={src} alt={what} loading="lazy" decoding="async" width="1290" height="2796" />
+    <img src={src} alt={what} loading="lazy" decoding="async" width="720" height="1565" />
   ) : (
     <div class="ph">
       <span class="n">Screenshot {n}</span>

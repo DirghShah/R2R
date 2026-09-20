@@ -350,12 +350,17 @@ const faqs = [
 
   @media (max-width: 52rem) {
     .hero-in { grid-template-columns: 1fr; }
-    .hero-shot { order: -1; }
+    /* The headline leads. This used to put the screenshot first, which made
+       sense when that slot was an empty labelled placeholder and made none at
+       all once it held a real one: the first screen a phone visitor saw was a
+       picture with no explanation, and the pitch sat below the fold.
+       Smaller here too, so the button is reachable without scrolling. */
+    .hero-shot { margin-top: 2.5rem; }
+    .hero-shot .shot { --w: 230px; }
   }
 
   /* Problem ------------------------------------------------------------- */
   .problem em { font-style: italic; color: var(--ink-3); }
-  .problem .lead { margin-top: 1.8rem; }
 
   /* How it works -------------------------------------------------------- */
   .how-grid {
