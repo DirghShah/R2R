@@ -30,6 +30,15 @@ struct CityListsScreen: View {
     @State private var vibeError: String?
     @FocusState private var searchFocused: Bool
 
+    /// Until somebody has actually run one, the examples show without needing
+    /// the field focused. A capability that lives inside a search box is
+    /// invisible to anyone who never opens the search box, and this is the only
+    /// surface that reaches them — short of a modal nobody reads.
+    ///
+    /// Self-limiting on purpose: it disappears the moment it has done its job,
+    /// or when dismissed.
+    @AppStorage("hasUsedVibeSearch") private var hasUsedVibeSearch = false
+
     /// Shown when the field is focused and empty. A search box can only teach
     /// its own capability before anything is typed — afterwards the person is
     /// already committed to a query, and if it was a name query they have
@@ -257,19 +266,44 @@ struct CityListsScreen: View {
         .padding(.horizontal, 22).padding(.bottom, 12)
     }
 
-    /// Tappable examples, shown where results would be once the field is
-    /// focused and still empty.
+    /// On focus with an empty field — and, until vibe search has been used
+    /// once, without focus at all.
+    private var showsVibePrompts: Bool {
+        guard searchText.isEmpty, vibeQuery == nil else { return false }
+        return searchFocused || !hasUsedVibeSearch
+    }
+
+    /// Tappable example queries, where the results would be.
     ///
-    /// This replaced a line of grey text under the bar reading "press return to
-    /// search by vibe". Nobody reads that: it appears only after you have typed,
-    /// which is after a natural-language query has already come back empty from
-    /// the name filter and told you the search is broken.
+    /// This replaced a line of grey text under the field reading "press return
+    /// to search by vibe". Nobody reads that: it appeared only after you had
+    /// typed, which is after a natural-language query has already come back
+    /// empty from the name filter and been reported as a failure.
     @ViewBuilder private var vibePrompts: some View {
-        if searchFocused && searchText.isEmpty && vibeQuery == nil {
+        if showsVibePrompts {
             VStack(alignment: .leading, spacing: 9) {
-                Text("OR DESCRIBE WHAT YOU'RE AFTER")
-                    .font(.system(size: 11, weight: .semibold)).tracking(0.4)
-                    .foregroundStyle(.inkMuted)
+                HStack(spacing: 0) {
+                    Text(hasUsedVibeSearch ? "OR DESCRIBE WHAT YOU'RE AFTER"
+                                           : "YOU CAN ALSO SEARCH BY FEELING")
+                        .font(.system(size: 11, weight: .semibold)).tracking(0.4)
+                        .foregroundStyle(.inkMuted)
+                    Spacer()
+                    // Only while it is unsolicited. Once it is a response to
+                    // focus, dismissing it makes no sense.
+                    if !hasUsedVibeSearch && !searchFocused {
+                        Button {
+                            Haptics.tap()
+                            hasUsedVibeSearch = true
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.inkMuted)
+                                .frame(width: 22, height: 22)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 ForEach(vibeExamples, id: \.self) { example in
                     Button {
                         Haptics.tap()
@@ -349,6 +383,8 @@ struct CityListsScreen: View {
             vibeQuery = q
             // Otherwise the keyboard covers the answer you just asked for.
             searchFocused = false
+            // It has done its job; stop volunteering it.
+            hasUsedVibeSearch = true
             Haptics.success()
         } catch {
             // Never render a failure as "no results" — that reads as though
