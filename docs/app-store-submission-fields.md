@@ -215,42 +215,117 @@ Automatic release puts the app live while the site still says it isn't out.
 Check each of these in the left sidebar. The submit button won't go green until
 all four are done, and App Privacy is the one people forget.
 
-## B1. App Information (sidebar → General → App Information)
+## B1. App Information — exactly what goes in each field
 
-| Field | Value |
+Taken from your own printout of the page.
+
+| Field | What's there now | What to put |
+|---|---|---|
+| **Name** | `NOSH:` ⚠️ | `Nosh: Food Reels to Map` |
+| **Subtitle** | empty ⚠️ | `Every food reel, on one map` |
+| **Primary Category** | empty ⚠️ | **Food & Drink** |
+| **Secondary Category** | empty | **Travel** |
+| **Content Rights** | not set up ⚠️ | "Does not contain, show, or access third-party content" |
+| Bundle ID | `com.yourco.reelmap` | leave it — see below |
+| SKU | `com.yourco.reelmap` | leave it, never public |
+| License Agreement | Apple's Standard | leave it |
+| Primary Language | English (U.S.) | leave it |
+
+**The Name field currently reads `NOSH:`** — five characters, trailing colon
+included. That is what would appear under your icon on every device that
+installs it. It looks like a paste that stopped at the colon. This is the single
+most visible thing on the page, so fix it first.
+
+### Bundle ID: leave it alone
+
+`com.yourco.reelmap` is a placeholder that shipped from the original template,
+and it is now permanent — the bundle ID cannot be changed once an app record
+exists with builds against it. Changing it means a new App ID, a new app
+record, new uploads, new TestFlight, and re-uploading the screenshots.
+
+It is not worth it. The bundle ID is not shown to users anywhere on the product
+page or on the device. The cost is cosmetic and private; the cost of changing
+it is your whole submission. Ship it.
+
+### Content Rights: answer No, and here is the reasoning
+
+The question is whether the app contains, shows, or accesses third-party
+content, and it exists so Apple can catch apps redistributing things they do
+not own — a wallpaper app full of copyrighted images, a music app streaming
+songs.
+
+Nosh redistributes nothing. It extracts **facts** — restaurant names,
+addresses, hours, what a creator recommended — and facts are not copyrightable.
+It shows no video, no thumbnail, no creator imagery, and it links back to the
+original post rather than reproducing it. Frames and audio are read and
+discarded.
+
+One honest caveat so you are not surprised later: fetching from the platforms
+at all is a **terms-of-service** question, which is a real risk you already know
+about and the reason the fetch sits behind the `ReelFetcher` interface. It is a
+different question from this one, and this field does not ask it.
+
+### Privacy Policy URL is not on this page
+
+I previously told you it was. It is not — your printout shows no such field.
+It lives on the **App Privacy** page: sidebar → App Privacy → next to Privacy
+Policy, click **Edit**. Put `https://noshmap.app/privacy` there.
+
+### Things on this page to skip
+
+App Encryption Documentation (no upload needed — you answered the standard
+encryption question at upload time), Vietnam Game License, Regulated Medical
+Devices, App Store Server Notifications, App-Specific Shared Secret. None apply
+to a free app with no in-app purchases.
+
+Worth doing in 1.0.1, not now: add `ITSAppUsesNonExemptEncryption: false` to
+the Info.plist keys in `ios/project.yml` so Xcode stops asking you the
+encryption question on every single upload.
+
+## B2. Age Rating — the questionnaire, section by section
+
+Button is on this same page: **Set Up Age Ratings**. Your printout lists the
+seven sections, so here is each one.
+
+| Section | Answer |
 |---|---|
-| Name | `Nosh: Food Reels to Map` |
-| Subtitle | `Every food reel, on one map` |
-| Privacy Policy URL | `https://noshmap.app/privacy` |
-| Primary Category | **Food & Drink** |
-| Secondary Category | **Travel** |
-| Content Rights | "No, it does not contain, show, or access third-party content" |
+| **In-App Controls** — Parental Controls, Age Assurance | None |
+| **Capabilities** — Unrestricted Web Access | **No** |
+| **Capabilities** — User-Generated Content | **Yes**, lowest frequency |
+| **Capabilities** — Social Media | **No** |
+| **Mature Themes** — profanity, horror, alcohol/tobacco/drugs | None |
+| **Medical or Wellness** | None |
+| **Sexuality or Nudity** | None |
+| **Violence** | None |
+| **Chance-Based Activities** — gambling, contests, loot boxes | None |
 
-On Content Rights: Nosh stores *its own* derived text plus a URL, and fetches
-frames transiently from a link the user supplies. It doesn't host, display or
-redistribute anyone's video. If you'd rather answer yes, you then have to
-assert you have the necessary rights — which you don't, and don't need, because
-you aren't using the content.
+Three of these deserve a sentence.
 
-## B2. Age Rating — where to find it
+**Unrestricted Web Access → No.** Reel links hand off to Safari or the host
+app. There is no in-app browser, which is what this descriptor is about.
 
-**Apps → Nosh → sidebar, under General → App Information → below Age Ratings,
-click "Set Up Age Ratings".**
+**User-Generated Content → Yes.** Shared maps let invited people add places.
+Say yes: you built reporting and blocking precisely for this, and claiming no
+while shipping a sharing feature is the kind of mismatch that surfaces on a
+later update and is far more awkward to explain then.
 
-Apple replaced this questionnaire recently, so it is longer than the old one and
-now asks about in-app controls and capabilities as well as content. Answer
-**None** to every content-frequency question. The ones that need a real answer:
+**Social Media → No.** There are no profiles, no feed, no following, no
+discovery of strangers. A shared map is a collaborative document with people
+you invited, closer to a shared note than a network. Answering yes would pull
+in the "Social Media Disabled for Users Under 18" follow-up and a higher rating
+for a feature you do not have.
 
-- **Unrestricted Web Access → No.** Reel links open in Safari or the host app;
-  there is no in-app browser.
-- **User-generated content → Yes**, then the lowest frequency offered. Shared
-  maps let invited people add places. Say yes: you built reporting and
-  blocking, this is what they are for, and claiming no while shipping a sharing
-  feature is the kind of mismatch that surfaces on a later update.
-- **Messaging / unmoderated chat → No.** There is no chat.
-- **Medical/wellness, violence, gambling, loot boxes → None.**
+**Alcohol — the one judgment call.** Nosh will pin bars and cocktail places,
+and "what to order" can name a drink. But these descriptors ask about content
+*the app provides*, and Nosh provides no editorial content about alcohol — it
+surfaces whatever is in the reels users bring, which is exactly what the
+User-Generated Content answer already covers. So: None.
 
-Expected result: **4+**.
+If your own map is mostly nightlife and you would rather be conservative,
+"Infrequent or Mild" is the honest alternative — but expect it to cost you the
+4+ badge.
+
+Expected result with the answers above: **4+**.
 
 ## B3. App Privacy (sidebar → App Privacy) — the one that gets forgotten
 
