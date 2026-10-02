@@ -145,6 +145,12 @@ const faqs = [
               <span class="step-n">{s.n}</span>
               <h3>{s.title}</h3>
               <p>{s.body}</p>
+              {/* Phones only. The sticky column beside these needs two columns
+                  to work, so it is hidden on one — which left the section with
+                  no pictures at all on the device most people read it on. */}
+              <div class="step-shot">
+                <Shot n={i + 2} what={s.shot} src={s.src} size="230px" />
+              </div>
             </article>
           ))}
         </div>
@@ -370,6 +376,8 @@ const faqs = [
     align-items: start;
   }
   .how-steps { display: flex; flex-direction: column; gap: clamp(4rem, 16vh, 9rem); }
+  /* Hidden where the sticky column does this job properly. */
+  .step-shot { display: none; }
   .step { max-width: 42ch; }
   .step-n {
     font-family: var(--font-display);
@@ -397,8 +405,13 @@ const faqs = [
 
   @media (max-width: 52rem) {
     .how-grid { grid-template-columns: 1fr; }
-    .how-sticky { display: none; }         /* stacked phones would be noise */
-    .how-steps { gap: 3.5rem; }
+    /* The crossfade needs a column to pin against, so it cannot survive a
+       single-column layout. Each step carries its own picture here instead.
+       Hiding this was written when those slots held empty placeholders, where
+       showing them really would have been noise. */
+    .how-sticky { display: none; }
+    .how-steps { gap: 4.5rem; }
+    .step-shot { display: flex; justify-content: center; margin-top: 2rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     .how-slide { transition: none; }
