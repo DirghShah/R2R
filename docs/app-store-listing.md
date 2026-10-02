@@ -7,27 +7,37 @@ enforces a limit; all of them are inside it.
 
 ## 1. App Name — 30 char limit
 
-**Nosh: Food Reels to Map**  — 23 chars
+**NOSH:**  — 5 chars
 
-The name field is indexed for search, so it is worth more than just "Nosh".
-If you have already set the name to something else and don't want to change it,
-that's fine — nothing else here depends on it.
+Keeping the colon, as chosen. It works because Apple stacks the name and the
+subtitle on the product page, so the two read as one line:
 
-Alternatives, if you prefer:
-- `Nosh — Save Food Reels` (22)
-- `Nosh: Restaurant Map` (20)
+> **NOSH:**
+> Food wishlist, mapped fast
+
+The colon is doing a job there rather than looking like a paste that stopped
+early. The one real cost is that the name field is the strongest search real
+estate Apple gives you, and "NOSH:" spends all of it on a brand nobody is
+searching for yet — which is why the keywords in § 4 had to be rebalanced.
 
 ---
 
 ## 2. Subtitle — 30 char limit
 
-**Every food reel, on one map**  — 27 chars
+**Food wishlist, mapped fast**  — 26 chars
+
+Three things in four words: *wishlist* (the saved places you meant to try),
+*mapped* (the mechanism), *fast* (the payoff). It also keeps "food" indexed,
+which the name no longer does.
 
 Alternatives:
-- `Turn saved reels into pins` (26)
-- `Your saved reels, mapped` (24)
 
----
+| Subtitle | Chars | Leans |
+|---|---|---|
+| `Wishlist mapped in seconds` | 26 | hardest on speed; loses "food" as a keyword |
+| `Your food wishlist, mapped` | 26 | calmest, most premium; no speed claim |
+| `Food wishlist, one tap away` | 27 | hardest on convenience |
+| `Food wishlist on one map, fast` | 30 | says the most, exactly at the limit |
 
 ## 3. Promotional text — 170 char limit
 
@@ -44,16 +54,18 @@ later. For now:
 ## 4. Keywords — 100 char limit, comma-separated, no spaces after commas
 
 ```
-restaurant,where to eat,saved,bookmark,foodie,dining,cafe,eats,places,travel,bucket list,pins,video
+restaurant,reels,map,where to eat,saved,foodie,dining,cafe,eats,places,travel,bucket list,bookmark
 ```
 
-— 99 chars
+— 98 chars
 
 Two things to know about this field:
 
 - **Apple already indexes your app name and subtitle**, and combines words
-  across all three. So "food", "reel" and "map" are deliberately *not* here —
-  they're in the subtitle, and repeating them wastes the budget.
+  across all three. The name is now "NOSH:", which carries no search terms at
+  all, and the subtitle carries only "food" and "wishlist". So "reels" and
+  "map" have been **added back** here — they used to be covered by the old
+  subtitle and no longer are. "food" stays out, since the subtitle has it.
 - **No competitor or brand names.** "instagram", "tiktok" and "youtube" are
   other companies' trademarks and are a common rejection reason in this field.
   They're fine in the description, which is where I've used them.

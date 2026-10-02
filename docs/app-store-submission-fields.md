@@ -221,8 +221,8 @@ Taken from your own printout of the page.
 
 | Field | What's there now | What to put |
 |---|---|---|
-| **Name** | `NOSH:` ⚠️ | `Nosh: Food Reels to Map` |
-| **Subtitle** | empty ⚠️ | `Every food reel, on one map` |
+| **Name** | `NOSH:` | keep as-is |
+| **Subtitle** | empty ⚠️ | `Food wishlist, mapped fast` |
 | **Primary Category** | empty ⚠️ | **Food & Drink** |
 | **Secondary Category** | empty | **Travel** |
 | **Content Rights** | not set up ⚠️ | "Does not contain, show, or access third-party content" |
@@ -231,10 +231,15 @@ Taken from your own printout of the page.
 | License Agreement | Apple's Standard | leave it |
 | Primary Language | English (U.S.) | leave it |
 
-**The Name field currently reads `NOSH:`** — five characters, trailing colon
-included. That is what would appear under your icon on every device that
-installs it. It looks like a paste that stopped at the colon. This is the single
-most visible thing on the page, so fix it first.
+**The Name stays `NOSH:`**, colon included. It works because Apple stacks the
+name above the subtitle on the product page, so the two read as one line —
+*NOSH:* / *Food wishlist, mapped fast*. The colon is doing a job rather than
+looking like a truncation.
+
+It does mean the name carries no search terms, so the keywords field in
+`docs/app-store-listing.md` § 4 has been rebalanced to add back "reels" and
+"map", which the old subtitle used to cover. Use the updated 98-character
+string, not the one you may have already pasted.
 
 ### Bundle ID: leave it alone
 
