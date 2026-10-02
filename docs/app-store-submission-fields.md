@@ -90,18 +90,61 @@ shows a map; it doesn't route. Leave it empty.
 
 Not applicable, and the page already tells you so.
 
-## A11. Build — ⚠️ this one is wrong
+## A11. Build — "13" may well be the right binary
 
-The page shows **Build 13** attached. You tested and signed off **build 15**.
+I previously said build 13 meant the crash fixes were missing. That was an
+inference stated far too confidently, and it is probably wrong. Here is the
+actual picture.
 
-Click the build row and select 15. If 15 isn't offered, it either hasn't
-finished processing or it got an email about a missing compliance answer —
-check the TestFlight tab.
+`ios/project.yml` says `CURRENT_PROJECT_VERSION: "15"`, and the build numbers
+map to commits like this:
 
-Shipping 13 would mean every fix that went into 14 and 15 — the delete-pin
-crash, the map-settings crash, the invites crash, the share toast, the vibe
-search UI — is absent from the version the public gets, while your screenshots
-show it. Worth double-checking before anything else on this page.
+| Build | Commit | What it added |
+|---|---|---|
+| 13 | `58cd3c5` | Teach vibe search at the moment somebody needs it |
+| 14 | `55850b7` | **Fix the delete crash, the stacked sheets, the suggestion takeover** |
+| 15 | `f761973` | Second attempt at the share toast backdrop |
+
+The number that reaches App Store Connect comes from the **`.xcodeproj`**, not
+from `project.yml`. XcodeGen only writes that number when you re-run
+`xcodegen generate`. So if you pulled the new source and archived *without*
+regenerating, Xcode compiled the new code and stamped it with the old number.
+
+And that works cleanly here, which is the key point: **builds 14 and 15 added no
+new files.** Every change is an edit to `CityListsScreen.swift`,
+`MapScreen.swift`, `MapSwitcherSheet.swift` and `ShareViewController.swift` —
+all four already in the project. A stale project file would still compile all
+of the new code. Nothing would be silently left out.
+
+So "it is listed as 13 but it is the build I tested" is a completely coherent
+account, and most likely what happened.
+
+### Settling it in sixty seconds
+
+Don't take my word for it either way — the binary itself will tell you. Install
+build 13 from TestFlight on your phone and do four things:
+
+1. Delete a pin
+2. Open map settings
+3. Open invites
+4. Share a reel from Instagram and watch the toast
+
+If 1–3 don't crash, build 14's fixes are in that binary and you are safe to
+submit. Those three crashes are the only rejection-grade problem in play; a
+reviewer deleting a pin and watching the app quit is Guideline 2.1.
+
+If 4 shows the toast on a black background, build 15's fix didn't make it. That
+is cosmetic — ship it and fix it in 1.0.1 rather than burning a build cycle.
+
+Also worth a glance: the build's **upload date** in TestFlight. Today's date
+means it's the recent archive.
+
+### If you want certainty instead
+
+Bump `CURRENT_PROJECT_VERSION` to `16`, run `xcodegen generate`, archive and
+upload. 16 because App Store Connect refuses a version+build pair it has
+already seen, and 13 is now taken. That costs a build cycle and is only worth
+it if the test above actually crashes.
 
 ## A12. App Review Information → Sign-In Information
 
@@ -189,16 +232,23 @@ redistribute anyone's video. If you'd rather answer yes, you then have to
 assert you have the necessary rights — which you don't, and don't need, because
 you aren't using the content.
 
-## B2. Age Rating (same App Information page)
+## B2. Age Rating — where to find it
 
-Answer **None** to every frequency question. The two that aren't obvious:
+**Apps → Nosh → sidebar, under General → App Information → below Age Ratings,
+click "Set Up Age Ratings".**
+
+Apple replaced this questionnaire recently, so it is longer than the old one and
+now asks about in-app controls and capabilities as well as content. Answer
+**None** to every content-frequency question. The ones that need a real answer:
 
 - **Unrestricted Web Access → No.** Reel links open in Safari or the host app;
-  there's no in-app browser.
-- **User-Generated Content → Yes**, and then Infrequent/Mild. Shared maps let
-  invited people add places. Say yes: you have reporting and blocking built,
-  this is exactly what they're for, and answering no while shipping a sharing
-  feature is the kind of mismatch that gets caught on a later update.
+  there is no in-app browser.
+- **User-generated content → Yes**, then the lowest frequency offered. Shared
+  maps let invited people add places. Say yes: you built reporting and
+  blocking, this is what they are for, and claiming no while shipping a sharing
+  feature is the kind of mismatch that surfaces on a later update.
+- **Messaging / unmoderated chat → No.** There is no chat.
+- **Medical/wellness, violence, gambling, loot boxes → None.**
 
 Expected result: **4+**.
 
@@ -248,14 +298,45 @@ is needed**, so don't add one.
 - Availability: all countries, unless you want to start smaller
 - Pre-orders: no
 
-## B5. EU Trader Status
+## B5. EU Trader Status — where to find it
 
-Required for anything distributed in the EU, and the only item here I won't
-answer for you. Submitting as an individual rather than a registered business
-points one way, but it's a legal declaration with real consequences — read
-Apple's own text on that screen before you answer. If you'd rather not deal
-with it today, the alternative is to deselect EU countries in B4 and submit
-everywhere else.
+Two places, because it is set per account and can then be overridden per app.
+
+**Account level:** **Business** (top nav) → **Agreements** tab → scroll to
+**Compliance** → next to Digital Services Act, click **Complete Compliance
+Requirements**. Needs the Account Holder or Admin role, which you have.
+
+**Per app:** Apps → Nosh → **App Information** → scroll to **App Store
+Regulations and Permits** → under Digital Services Act, click **Edit**.
+
+If you skip it, App Store Connect asks you at submission time anyway, so it is
+not escapable — but it is also not a blocker you need to solve before starting
+the other fields.
+
+### The actual decision
+
+Under the DSA a trader is someone acting for purposes relating to their trade
+or business. In practice Apple's threshold is **whether the app makes money
+through the App Store** — paid downloads, in-app purchases, or even ads. Nosh
+is free, has no IAP and carries no advertising, so "this is not a trader
+account" is a defensible declaration.
+
+Two things to weigh, and then it is your call:
+
+- **Declaring trader as an individual publishes your home address and phone
+  number on the Nosh product page.** That is not a side effect, it is the point
+  of the requirement. For an indie developer working from home it is a real
+  cost, and a P.O. Box is the usual way around it.
+- **Declaring "not a trader" is not the same as leaving it blank.** The ~135,000
+  apps Apple pulled from EU storefronts in February 2025 were ones with *no
+  status provided at all*. A declared non-trader status is a complete answer.
+
+What I could not confirm from Apple's own documentation is whether a verified
+non-trader app is still distributed in the EU or quietly excluded from those
+storefronts — the help page doesn't say, and I'm not going to guess at
+something that decides whether you have a European market. The screen itself
+states the consequence when you pick. Read what it says before confirming, and
+if it tells you EU availability is affected, that is the authority, not me.
 
 ---
 
@@ -271,12 +352,18 @@ everywhere else.
 
 # D. Order of operations
 
-1. **Switch the build to 15** (A11) — nothing else matters if this is wrong
-2. Set `EXAMPLE_REEL_URL` on Railway, curl it, confirm 200 (A14)
+1. **Install build 13 from TestFlight and try delete-pin, map settings, invites**
+   (A11). This is the only thing that could get you rejected. If it passes, the
+   build is fine as listed.
+2. Set `EXAMPLE_REEL_URL` on Railway and curl it for a 200 — your Notes field
+   already tells the reviewer to tap that button (A14)
 3. Open `noshmap.app/support` and `/privacy` in a browser (A5, B1)
-4. Reorder the three screenshots (A1)
-5. Paste A2 → A8, A14; set release to Manual (A16)
-6. App Information + Age Rating (B1, B2)
-7. App Privacy (B3) — the sleeper
-8. Pricing (B4), EU trader status (B5)
-9. **Add for Review**
+4. Confirm the first three screenshots are Uchiko detail, vibe search, map (A1)
+5. Confirm **"Manually release this version"** is the selected radio (A16)
+6. App Information: Name, Subtitle, Categories, Privacy Policy URL, Content
+   Rights (B1)
+7. Age Rating questionnaire (B2)
+8. **App Privacy** (B3) — the one that gets forgotten
+9. Pricing and Availability (B4)
+10. EU trader status (B5)
+11. **Add for Review**
