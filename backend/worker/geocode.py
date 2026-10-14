@@ -44,6 +44,10 @@ _DETAILS_FIELD_MASK = ",".join([
 ])
 _PLACES_AUTOCOMPLETE = "https://places.googleapis.com/v1/places:autocomplete"
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
+# Nominatim asks for a User-Agent naming the app and a way to reach its
+# operator. The old one claimed to be a dev build of the old app name and
+# gave no contact at all — worth fixing now that it is the fallback.
+_NOMINATIM_UA = "Nosh/1.0 (+https://noshmap.app; noshmap@outlook.com)"
 
 
 @dataclass
@@ -247,6 +251,22 @@ def geocode(place, address_hint: str | None = None) -> GeocodeResult:
 
     if use_google:
         result = _google(place, address_hint)
+        # Google fails wholesale, not per-place: an expired card, a disabled
+        # API or a restricted key returns nothing for everything. Without this
+        # fallback a billing problem silently became "no pins at all" for four
+        # days, and the only visible symptom was places quietly arriving
+        # unmapped. Nominatim is free and already here; falling back costs the
+        # photos and the rating, not the pin.
+        if result.lat is None:
+            log.info("geocode: google gave no pin for %r — trying Nominatim",
+                     place.name)
+            if address_hint:
+                precise = _nominatim_address(address_hint, place)
+                if precise is not None and precise.lat is not None:
+                    return precise
+            fallback = _nominatim(place)
+            if fallback.lat is not None:
+                return fallback
     else:
         result = _nominatim(place)
 
@@ -276,7 +296,7 @@ def _nominatim_address(address: str, place) -> GeocodeResult | None:
         r = httpx.get(
             _NOMINATIM,
             params={"q": address, "format": "json", "limit": 1, "addressdetails": 1},
-            headers={"User-Agent": "ReelMap/0.1 (dev)"},
+            headers={"User-Agent": _NOMINATIM_UA},
             timeout=30,
         )
         r.raise_for_status()
@@ -570,6 +590,20 @@ def _places_text_search(place, address_hint: str | None) -> list[dict]:
         )
         r.raise_for_status()
         return r.json().get("places") or []
+    except httpx.HTTPStatusError as exc:
+        # 401/403 is never about this particular restaurant — it is the key,
+        # the billing account or the API enablement, and it will keep failing
+        # for every place until a human fixes it. Logged at ERROR with the
+        # response body, because the status alone does not say which of the
+        # three it is, and a WARNING among thousands is how this went unnoticed
+        # for four days.
+        if exc.response.status_code in (401, 403):
+            log.error("google places auth/billing failure (%s) — every lookup "
+                      "will fail until this is fixed: %s",
+                      exc.response.status_code, exc.response.text[:500])
+        else:
+            log.warning("google text search failed for %r", place.name, exc_info=True)
+        return []
     except Exception:  # noqa: BLE001 - degrade to no pin
         log.warning("google text search failed for %r", place.name, exc_info=True)
         return []
@@ -680,7 +714,7 @@ def _nominatim(place) -> GeocodeResult:
             r = httpx.get(
                 _NOMINATIM,
                 params={"q": q, "format": "json", "limit": 3, "addressdetails": 1},
-                headers={"User-Agent": "ReelMap/0.1 (dev)"},
+                headers={"User-Agent": _NOMINATIM_UA},
                 timeout=30,
             )
             r.raise_for_status()
