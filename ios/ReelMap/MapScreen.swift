@@ -35,7 +35,9 @@ struct MapScreen: View {
     }
     @State private var camera: MapCameraPosition = .automatic
     @State private var didCenterOnUser = false
-    @State private var region: MKCoordinateRegion?
+    /// The zoom step the clustering grid is sized from — deliberately a
+    /// coarse Int rather than the live span. See `zoomStep(for:)`.
+    @State private var zoomStep: Int = MapScreen.zoomStep(for: 0.08)
 
     /// Everything derived from the cache, computed once per render instead of
     /// re-filtering for each consumer.
@@ -96,9 +98,31 @@ struct MapScreen: View {
         }
     }
 
+    /// Buckets a longitude span into a discrete zoom step.
+    ///
+    /// The grid used to be sized straight from the live `region.span`, so every
+    /// camera nudge produced a slightly different cell, different grid keys, and
+    /// therefore a different `Cluster.id` for every pin. `ForEach` reads that as
+    /// "every annotation replaced" and tears down and rebuilds all of them —
+    /// inside the same layout pass MapKit is using to settle the camera, which
+    /// moves the camera again. That loop is what four 0x8BADF00D watchdog kills
+    /// were spinning in; one of them caught it mid-churn in
+    /// `MKAnnotationContainerView addAnnotationView` under
+    /// `_didChangeRegionMidstream`.
+    ///
+    /// It stayed invisible for weeks because geocoding was failing: with no
+    /// coordinates, `clusters` skipped every place and produced nothing to
+    /// churn. Setting locations by hand is what lit the fuse.
+    ///
+    /// A step only moves when the zoom roughly doubles or halves, so panning at
+    /// a fixed zoom now re-renders nothing: the grid is in absolute lat/lng, so
+    /// moving the camera cannot change which cell a place falls into.
+    static func zoomStep(for span: Double) -> Int {
+        Int(log2(max(span, 0.0004)).rounded())
+    }
+
     private var clusters: [Cluster] {
-        let span = region?.span.longitudeDelta ?? 0.08
-        let cell = max(span / 14, 0.0004)  // cell size shrinks as you zoom in
+        let cell = max(pow(2, Double(zoomStep)) / 14, 0.0004)  // shrinks as you zoom in
         var buckets: [String: [CachedPlace]] = [:]
         for p in pins {
             guard let c = p.coordinate else { continue }
@@ -129,7 +153,13 @@ struct MapScreen: View {
             }
         }
         .mapStyle(.standard(pointsOfInterest: .excludingAll))
-        .onMapCameraChange(frequency: .onEnd) { ctx in region = ctx.region }
+        // Only react when the zoom bucket actually changes. Panning keeps the
+        // same grid, so there is nothing to recompute and no reason to touch
+        // state the body reads.
+        .onMapCameraChange(frequency: .onEnd) { ctx in
+            let step = Self.zoomStep(for: ctx.region.span.longitudeDelta)
+            if step != zoomStep { zoomStep = step }
+        }
         .ignoresSafeArea(edges: .top)
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
