@@ -22,7 +22,13 @@ def apify_run(actor: str, payload: dict) -> dict:
     if not settings.apify_token:
         raise RuntimeError("APIFY_TOKEN is not configured")
     endpoint = _APIFY_RUN_SYNC.format(actor=actor.replace("/", "~"))
-    resp = httpx.post(endpoint, params={"token": settings.apify_token}, json=payload, timeout=180)
+    # The token goes in a header, not the query string. Apify accepts both, but
+    # httpx logs the full request URL at INFO — so the query-string form wrote a
+    # live API token into Railway's logs on every single fetch, where anyone with
+    # log access could read it. Headers are not logged.
+    resp = httpx.post(endpoint,
+                      headers={"Authorization": f"Bearer {settings.apify_token}"},
+                      json=payload, timeout=180)
     resp.raise_for_status()
     items = resp.json()
     if not items:

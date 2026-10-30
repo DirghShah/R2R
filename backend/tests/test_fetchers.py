@@ -200,3 +200,40 @@ def test_apple_jwks_is_cached_not_refetched_per_signin(monkeypatch):
     auth._apple_keys()
     auth._apple_keys()
     assert calls["n"] == 1, "JWKS should be fetched once and cached"
+
+
+def test_apify_token_is_sent_as_a_header_not_a_query_param(monkeypatch):
+    """httpx logs full request URLs at INFO.
+
+    While the token rode in the query string, every Apify fetch wrote a live
+    API credential into Railway's logs, readable by anyone with log access.
+    It leaked for as long as the fetcher has existed.
+    """
+    import httpx
+
+    from app.config import settings
+    from worker.fetchers import instagram
+
+    seen = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return [{"caption": "x"}]
+
+    def fake_post(url, **kw):
+        seen["url"] = url
+        seen["params"] = kw.get("params")
+        seen["headers"] = kw.get("headers") or {}
+        return _Resp()
+
+    monkeypatch.setattr(settings, "apify_token", "apify_api_SECRET")
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    instagram.apify_run("apify/instagram-scraper", {})
+
+    assert "apify_api_SECRET" not in seen["url"], "token is in the logged URL"
+    assert not (seen["params"] or {}), "token must not ride in query params"
+    assert seen["headers"]["Authorization"] == "Bearer apify_api_SECRET"
