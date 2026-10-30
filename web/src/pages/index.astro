@@ -3,10 +3,10 @@ import Base from '../layouts/Base.astro';
 import Shot from '../components/Shot.astro';
 import Wordmark from '../components/Wordmark.astro';
 
-// Set this the moment the listing is live. Until then both buttons say so
-// rather than being links that go nowhere — a "Download on the App Store"
-// button that does nothing is worse than no button.
-const appStoreURL: string | null = null;
+// Live since 30 October 2026. No /us/ in the path on purpose — Apple then
+// sends each visitor to their own storefront instead of bouncing everyone
+// through the US one.
+const appStoreURL: string | null = 'https://apps.apple.com/app/nosh/id6798939510';
 
 const steps = [
   {
