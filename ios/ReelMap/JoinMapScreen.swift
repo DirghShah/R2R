@@ -9,6 +9,7 @@ struct JoinMapScreen: View {
     let code: String
     var onJoined: (MapSummary) -> Void
 
+    @EnvironmentObject private var maps: MapStore
     @Environment(\.dismiss) private var dismiss
     @State private var preview: MapPreview?
     @State private var loading = true
@@ -111,7 +112,11 @@ struct JoinMapScreen: View {
         joining = true
         defer { joining = false }
         do {
-            let map = try await APIClient.shared.joinMap(code: code)
+            // Through the store, not APIClient directly. MapStore.join appends
+            // the map, selects it and refreshes; calling the API around it left
+            // the roster untouched, so a joined map only appeared after the app
+            // was relaunched and MapStore reloaded from scratch.
+            let map = try await maps.join(code: code)
             Haptics.success()
             onJoined(map)
             dismiss()

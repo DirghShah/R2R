@@ -23,6 +23,14 @@ struct PlaceDetailScreen: View {
     // which makes it reportable content.
     @State private var reporting: ReportSubject?
     @State private var deleting = false
+    /// Set the moment the server confirms the delete, before dismissing.
+    ///
+    /// Every property read in the body goes through `place`, and reading a
+    /// deleted SwiftData model is a hard crash — so the body must stop touching
+    /// it before the row is purged. This used to be a 450ms sleep timed to
+    /// outlast the dismiss animation, which is a race, not a guarantee: a slow
+    /// device or a reduced-motion setting wins it and crashes the app.
+    @State private var deleted = false
     @State private var deleteError: String?
     @State private var showLocationPicker = false
     @FocusState private var isNotesFocused: Bool
@@ -32,6 +40,16 @@ struct PlaceDetailScreen: View {
     private var hasCoords: Bool { place.coordinate != nil }
 
     var body: some View {
+        if deleted {
+            // Dismissal is already under way; render nothing rather than read a
+            // model that is about to stop existing.
+            Color.clear
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(spacing: 0) {
                 hero
@@ -468,11 +486,8 @@ struct PlaceDetailScreen: View {
             return
         }
         Haptics.success()
+        deleted = true
         dismiss()
-        // Let the sheet finish tearing down before the model goes away — this
-        // view still holds `place`, and reading a deleted SwiftData object mid
-        // dismissal is a crash.
-        try? await Task.sleep(nanoseconds: 450_000_000)
         Syncer.purge(placeID: id, context)
     }
 

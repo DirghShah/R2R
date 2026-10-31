@@ -22,7 +22,7 @@ settings:
     #
     # Bump CURRENT_PROJECT_VERSION for every upload: App Store Connect refuses
     # a version+build pair it has already seen.
-    MARKETING_VERSION: "1.0"
+    MARKETING_VERSION: "1.0.1"
     CURRENT_PROJECT_VERSION: "16"
     # The deployed backend. Works from anywhere — cellular, other Wi-Fi, a
     # friend's phone — which LAN addresses never did.
@@ -92,6 +92,11 @@ targets:
         CFBundleDisplayName: Nosh
         API_BASE_URL: $(API_BASE_URL)
         UILaunchScreen: {}
+        # Nosh encrypts nothing itself — the only crypto it touches is HTTPS via
+        # URLSession and the Keychain, both exempt. Declaring it here answers the
+        # export-compliance question at build time instead of being asked it on
+        # every single upload.
+        ITSAppUsesNonExemptEncryption: false
         # Shown in the "Allow Nosh to use your location?" prompt — required or
         # the map's blue-dot / center-on-me feature silently does nothing.
         NSLocationWhenInUseUsageDescription: "Nosh centers the map on your location so you can see saved spots near you."
