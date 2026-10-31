@@ -1,0 +1,57 @@
+{
+  "manual": {
+    "downloads": null,
+    "downloads_note": "App Store Connect, as of 2026-10-30",
+    "downloads_by_channel": {},
+    "_channels_example": {
+      "Instagram": 0,
+      "TikTok": 0,
+      "Friends": 0,
+      "Search": 0
+    }
+  },
+  "bills": [
+    {
+      "name": "Google Cloud (Places API)",
+      "url": "https://console.cloud.google.com/billing",
+      "due_day": 1,
+      "tracks": "geocode",
+      "remind_days": 5,
+      "note": "Card is charged on a threshold or monthly. Check the Reports page for the true figure."
+    },
+    {
+      "name": "Anthropic API",
+      "url": "https://console.anthropic.com/settings/billing",
+      "due_day": 1,
+      "tracks": "claude",
+      "note": "Top up credit before it runs out or reel analysis stops."
+    },
+    {
+      "name": "Apify",
+      "url": "https://console.apify.com/billing",
+      "due_day": 1,
+      "tracks": "fetch"
+    },
+    {
+      "name": "Railway",
+      "url": "https://railway.com/account/billing",
+      "due_day": 1,
+      "amount_usd": 20
+    },
+    {
+      "name": "Apple Developer Program",
+      "url": "https://developer.apple.com/account",
+      "due_date": "2027-10-01",
+      "amount_usd": 99,
+      "remind_days": 30,
+      "note": "If this lapses the app is pulled from the App Store."
+    },
+    {
+      "name": "noshmap.app domain",
+      "url": "https://vercel.com/dashboard/domains",
+      "due_date": "2027-06-01",
+      "amount_usd": 20,
+      "remind_days": 30
+    }
+  ]
+}

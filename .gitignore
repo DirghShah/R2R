@@ -36,3 +36,6 @@ ios/ShareExtension/ShareExtension.entitlements
 # Editors
 .idea/
 .vscode/
+
+# Personal dashboard settings (real bill dates, download counts)
+backend/scripts/dashboard/config.json

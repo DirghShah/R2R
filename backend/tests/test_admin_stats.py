@@ -259,3 +259,38 @@ def test_candidates_are_ranked_and_guarded(client, monkeypatch):
     body = client.get("/admin/example-candidates", headers=_auth(client)).json()
     scores = [c["score"] for c in body["candidates"]]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_growth_funnel_excludes_the_example_reel_and_counts_invites(client, monkeypatch):
+    """Activation is "added a reel of their own": tapping the free example
+    writes a UserReel too, and must not count as onboarding working."""
+    from sqlalchemy import select
+
+    from app.models import Map, MapMember, User, UserReel
+
+    monkeypatch.setattr(settings, "admin_token", TOKEN)
+    own = client.post("/reels", json={"url": REEL_A}).json()["reel_id"]
+    example = client.post("/reels", json={"url": REEL_B}).json()["reel_id"]
+    monkeypatch.setattr(settings, "example_reel_url", REEL_B)
+    db = session()
+    try:
+        me = db.scalars(select(User)).first()
+        friend = User(apple_sub="friend-sub")
+        db.add(friend)
+        db.flush()
+        db.add(UserReel(user_id=friend.id, reel_source_id=example))  # example only
+        shared = Map(name="Trip", owner_id=me.id, is_personal=False, invite_code="abc123")
+        db.add(shared)
+        db.flush()
+        db.add_all([MapMember(map_id=shared.id, user_id=me.id, role="owner"),
+                    MapMember(map_id=shared.id, user_id=friend.id, role="editor")])
+        db.commit()
+    finally:
+        db.close()
+
+    g = client.get("/admin/stats", headers=_auth(client)).json()["growth"]
+    assert g["overall"]["activated"] >= 1
+    assert g["overall"]["only_tried_example"] == 1
+    assert g["sharing"]["invites_accepted"] == 1
+    assert g["sharing"]["shared_maps"] == 1
+    assert len(g["weekly"]) == 8

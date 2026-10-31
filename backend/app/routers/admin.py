@@ -20,7 +20,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db import get_db
-from app.models import Map, Place, ReelSource, User, UserPlace
+from app.models import (
+    Map, MapMember, Place, ReelSource, RefreshToken, User, UserPlace, UserReel,
+)
 
 router = APIRouter(tags=["admin"], include_in_schema=False)
 
@@ -126,6 +128,7 @@ def stats(db: Session = Depends(get_db)) -> dict:
         # Whether the place cache is actually earning its keep. Reads straight
         # off the stored breakdowns, so it can't drift from what was billed.
         "cache": _cache_effect(db),
+        "growth": _growth(db, now),
         "unit_economics": {
             # What one more user who fills the free tier would cost.
             "cost_of_a_maxed_free_user_monthly": round(
@@ -134,6 +137,122 @@ def stats(db: Session = Depends(get_db)) -> dict:
             "avg_places_per_reel": round(places_per_reel, 2),
             "share_of_reels_with_no_places": round(unsupported_share, 3),
         },
+    }
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """SQLite hands back naive timestamps; compare everything as UTC."""
+    return dt if dt is None or dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _example_reel_id(db: Session) -> str | None:
+    """The reel every new user is offered for free, if one is configured.
+
+    It has to be excluded from "added their first reel": tapping the example
+    writes a UserReel too, and counting it would make activation look like
+    onboarding works when all it measures is a button press.
+    """
+    if not settings.example_reel_url:
+        return None
+    try:
+        from worker.fetchers.base import parse_source  # same parser POST /reels uses
+
+        _, cid = parse_source(settings.example_reel_url)
+    except Exception:  # noqa: BLE001 - a bad config must not take stats down
+        return None
+    return db.scalar(select(ReelSource.id).where(ReelSource.canonical_id == cid))
+
+
+def _growth(db: Session, now: datetime, weeks: int = 8) -> dict:
+    """The marketing funnel: do new people add a reel, do they come back, do
+    they pull anyone else in.
+
+    Every figure carries its sample size, because with a few dozen users a
+    percentage on its own is a story the data can't support.
+
+    Retention is a proxy, stated as one: there is no app-open event, so a user
+    counts as "back" when they add a reel, save a place, join a map or have a
+    session token minted (the app refreshes one whenever it opens past expiry)
+    seven or more days after signing up. It undercounts people who open the app
+    and do nothing, and it will be replaced if real event tracking is added.
+    """
+    users = [(uid, _aware(c)) for uid, c in db.execute(select(User.id, User.created_at)).all()]
+    example_id = _example_reel_id(db)
+
+    own = select(UserReel.user_id, func.min(UserReel.created_at)).group_by(UserReel.user_id)
+    if example_id:
+        own = own.where(UserReel.reel_source_id != example_id)
+    first_own = {u: _aware(t) for u, t in db.execute(own).all()}
+    tried_example = set()
+    if example_id:
+        tried_example = {u for (u,) in db.execute(
+            select(UserReel.user_id).where(UserReel.reel_source_id == example_id)
+        ).all()}
+
+    last_active: dict[str, datetime] = {}
+    for col, ts in (
+        (UserReel.user_id, UserReel.created_at), (UserPlace.user_id, UserPlace.saved_at),
+        (RefreshToken.user_id, RefreshToken.created_at), (MapMember.user_id, MapMember.joined_at),
+    ):
+        for uid, t in db.execute(select(col, func.max(ts)).group_by(col)).all():
+            t = _aware(t)
+            if t and (uid not in last_active or t > last_active[uid]):
+                last_active[uid] = t
+
+    def cohort(rows: list[tuple[str, datetime]]) -> dict:
+        activated = [u for u, _ in rows if u in first_own]
+        day_one = sum(1 for u, c in rows if u in first_own and first_own[u] - c <= timedelta(days=1))
+        eligible = [(u, c) for u, c in rows if now - c >= timedelta(days=7)]
+        back = sum(1 for u, c in eligible if last_active.get(u) and last_active[u] >= c + timedelta(days=7))
+        return {
+            "signups": len(rows),
+            "activated": len(activated),
+            "activated_day_one": day_one,
+            "only_tried_example": sum(1 for u, _ in rows if u in tried_example and u not in first_own),
+            "d7_eligible": len(eligible),
+            "d7_retained": back,
+        }
+
+    week0 = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    series = []
+    for i in range(weeks - 1, -1, -1):
+        start = week0 - timedelta(weeks=i)
+        end = start + timedelta(weeks=1)
+        row = cohort([(u, c) for u, c in users if start <= c < end])
+        row["week_start"] = start.date().isoformat()
+        row["invites_accepted"] = db.scalar(
+            select(func.count()).select_from(MapMember)
+            .where(MapMember.role != "owner", MapMember.joined_at >= start, MapMember.joined_at < end)
+        ) or 0
+        row["maps_created"] = db.scalar(
+            select(func.count()).select_from(Map)
+            .where(Map.is_personal.is_(False), Map.created_at >= start, Map.created_at < end)
+        ) or 0
+        series.append(row)
+
+    month = now - timedelta(days=30)
+    joined = lambda *w: db.scalar(  # noqa: E731
+        select(func.count()).select_from(MapMember).where(MapMember.role != "owner", *w)) or 0
+    shared = db.scalar(
+        select(func.count()).select_from(
+            select(Map.id).join(Map.members).where(Map.is_personal.is_(False))
+            .group_by(Map.id).having(func.count() > 1).subquery()
+        )
+    ) or 0
+    return {
+        "overall": cohort(users),
+        "weekly": series,
+        "sharing": {
+            "maps_created": db.scalar(
+                select(func.count()).select_from(Map).where(Map.is_personal.is_(False))) or 0,
+            "invite_links_created": db.scalar(
+                select(func.count()).select_from(Map).where(Map.invite_code.is_not(None))) or 0,
+            "shared_maps": shared,
+            "invites_accepted": joined(),
+            "invites_accepted_30d": joined(MapMember.joined_at >= month),
+        },
+        "example_configured": example_id is not None,
+        "d7_basis": "adds a reel, saves a place, joins a map or reopens the app 7+ days after signup",
     }
 
 
