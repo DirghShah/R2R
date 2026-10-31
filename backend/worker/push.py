@@ -36,10 +36,8 @@ def _key_path() -> str | None:
         return None
     if _materialised_key_path and os.path.exists(_materialised_key_path):
         return _materialised_key_path
-    try:
-        raw = base64.b64decode(settings.apns_key_content)
-    except Exception:  # noqa: BLE001
-        log.error("push: APNS_KEY_CONTENT is not valid base64")
+    raw = _decode_key(settings.apns_key_content)
+    if raw is None:
         return None
     fd, path = tempfile.mkstemp(suffix=".p8", prefix="apns-")
     with os.fdopen(fd, "wb") as fh:
@@ -47,6 +45,44 @@ def _key_path() -> str | None:
     os.chmod(path, 0o600)
     _materialised_key_path = path
     return path
+
+
+def _decode_key(content: str) -> bytes | None:
+    """The .p8 bytes, from either base64 or the PEM pasted straight in.
+
+    The old version called `base64.b64decode` with the default
+    `validate=False`, which does not raise on PEM text — it silently discards
+    every character outside the base64 alphabet (the dashes, the newlines) and
+    decodes the rest as data. So pasting the .p8 directly wrote a file of
+    garbage, the "not valid base64" branch never ran, and the only symptom was
+    PyJWT failing in `prepare_key` several layers away, once per push, as a
+    warning nobody reads.
+
+    Both forms are now accepted, and anything that is neither says so.
+    """
+    content = (content or "").strip()
+    if not content:
+        return None
+    if content.startswith("-----BEGIN"):
+        log.info("push: APNS_KEY_CONTENT holds the .p8 directly, not base64 — using as-is")
+        # PEM parsers expect the trailing newline; .strip() above removed it.
+        raw = (content + "\n").encode()
+    else:
+        try:
+            # Whitespace out first: `base64 -i key.p8` wraps at 76 columns, and
+            # validate=True (which is the point — stray characters must raise
+            # rather than be silently dropped) would reject those newlines.
+            compact = "".join(content.split())
+            raw = base64.b64decode(compact, validate=True)
+        except Exception:  # noqa: BLE001
+            log.error("push: APNS_KEY_CONTENT is neither base64 nor a PEM key — "
+                      "expected `base64 -i AuthKey_XXXXXXXXXX.p8`")
+            return None
+    if not raw.lstrip().startswith(b"-----BEGIN"):
+        log.error("push: APNS_KEY_CONTENT decoded to %d bytes that are not a PEM "
+                  "private key. Every push will fail until this is fixed.", len(raw))
+        return None
+    return raw
 
 
 def notify_user(user_id: str, title: str, body: str, deep_link: str | None = None) -> None:
