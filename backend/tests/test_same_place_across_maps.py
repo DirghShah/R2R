@@ -85,3 +85,41 @@ def test_a_place_a_friend_already_added_is_not_duplicated(client):
     assert mine["place_count"] == 1
     assert len(client.enqueued) == before, "already on this map, whoever added it"
     assert _places_on(client, trip["id"]) == ["Kung Fu Tea"]
+
+
+def test_your_own_analysed_reel_really_lands_on_the_second_map(client):
+    """The same bug, one layer down — and the layer the other test stubs out.
+
+    `_analyze` writes places directly, so it never runs the worker's cached
+    path. That path skipped every template row owned by the submitting user,
+    which is all of them when you analysed the reel yourself: the API queued
+    the job, the worker copied nothing, and the second map stayed empty. This
+    calls the real `analyze_reel`.
+    """
+    from worker import pipeline
+
+    personal = client.get("/maps").json()[0]["id"]
+    reel = client.post("/reels", json={"url": REEL_A}).json()["reel_id"]
+    _analyze(reel, _first_user(), ["Kung Fu Tea"], map_id=personal)
+
+    second = client.post("/maps", json={"name": "Date nights"}).json()["id"]
+    client.post("/reels", json={"url": REEL_A, "map_id": second})
+
+    result = pipeline.analyze_reel(reel, _first_user(), second)
+    assert result["cached"] is True, "must reuse the analysis, not pay for it again"
+    assert result["places"] == 1, "the worker copied nothing to the second map"
+    assert _places_on(client, second) == ["Kung Fu Tea"]
+    assert _places_on(client, personal) == ["Kung Fu Tea"], "first map untouched"
+
+
+def test_the_worker_does_not_duplicate_into_a_map_that_has_it(client):
+    """Removing the ownership guard must not cost us the dedupe that works."""
+    from worker import pipeline
+
+    personal = client.get("/maps").json()[0]["id"]
+    reel = client.post("/reels", json={"url": REEL_A}).json()["reel_id"]
+    _analyze(reel, _first_user(), ["Kung Fu Tea"], map_id=personal)
+
+    result = pipeline.analyze_reel(reel, _first_user(), personal)
+    assert result["places"] == 0, "it is already here — nothing to add"
+    assert _places_on(client, personal) == ["Kung Fu Tea"], "no duplicate pin"

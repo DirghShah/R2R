@@ -577,14 +577,27 @@ def _get_or_create_city(
 
 
 def _link_existing_to_user(db, reel: ReelSource, user_id: str, map_id: str) -> int:
-    """Cached reel: copy reel-derived UserPlaces from any prior user to this one."""
+    """Cached reel: copy its places onto `map_id`, whoever analysed it first.
+
+    The skip used to also test whether the template row was owned by this same
+    user, which made sense when a user had exactly one map: don't clone a row
+    you already own. Once maps existed it became the bug it was meant to
+    prevent — re-sharing your own analysed reel into a second map found every
+    template row owned by you, skipped all of them, and copied nothing, while
+    the API had correctly decided there was work to do and queued the job.
+
+    Ownership is the wrong question. "Is this place already on *this map*" is
+    the right one, and the `already` lookup below answers it — from any reel
+    and any member, which also covers a shared map where someone else added
+    the venue first.
+    """
     template = db.scalars(
         select(UserPlace).where(UserPlace.reel_source_id == reel.id)
     ).all()
     seen_places: set[str] = set()
     count = 0
     for t in template:
-        if t.user_id == user_id or t.place_id in seen_places:
+        if t.place_id in seen_places:
             continue
         seen_places.add(t.place_id)
         # Already on this map from *any* reel — record the source, don't clone.
